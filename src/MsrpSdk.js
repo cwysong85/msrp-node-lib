@@ -16,6 +16,8 @@ module.exports = function(config) {
   require('./Sdp.js')(MsrpSdk); // Depends on: Content-Type, Util
   require('./Message.js')(MsrpSdk); // Depends on: Content-Type, Status, Util
 
+  require('./Exceptions.js')(MsrpSdk);
+  require('./ChunkReceiver.js')(MsrpSdk);
   require('./ChunkSender.js')(MsrpSdk); // Depends on: Message, Status, Util
   require('./Parser.js')(MsrpSdk); // Depends on: Message
 

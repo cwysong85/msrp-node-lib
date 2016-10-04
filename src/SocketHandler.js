@@ -2,181 +2,340 @@ var util = require('util');
 var EventEmitter = require('events').EventEmitter;
 
 module.exports = function(MsrpSdk) {
-  var config = MsrpSdk.Config;
-  var msrpTracingEnabled = config.traceMsrp;
+    var config = MsrpSdk.Config;
+    var msrpTracingEnabled = config.traceMsrp;
+    var chunkReceivers = {},
+        receiverCheckInterval = null;
 
-  var SocketHandler = function(socket) {
-    var socketHandler = this;
-    var session; // Stores the session for the current socket
+    var SocketHandler = function(socket) {
+        var socketHandler = this;
+        var session; // Stores the session for the current socket
 
-    socket.on('data', function(data) {
-      // Send to tracing function
-      traceMsrp(data);
+        socket._msrpDataBuffer = new Buffer(0);
 
-      // Parse MSRP message
-      var msg = MsrpSdk.parseMessage(data);
+        socket.on('data', function(data) {
 
-      if (!msg) {
-        // TODO: (LVM) Do we need to do something else here?
-        console.warn('Could not parse MSRP message');
-        return;
-      }
+            // Send to tracing function
+            traceMsrp(data);
 
-      // The toUri contains our sessionId
-      var toUri = new MsrpSdk.URI(msg.toPath[0]);
-      var fromUri = new MsrpSdk.URI(msg.fromPath[0]);
+            if (socket._msrpDataBuffer.length !== 0) {
+                socket._msrpDataBuffer = Buffer.concat([socket._msrpDataBuffer, new Buffer(data)]);
+            } else {
+                socket._msrpDataBuffer = new Buffer(data);
+            }
 
-      // Check if toUri is not null
-      if (!toUri) {
-        sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.BAD_REQUEST);
-        return;
-      }
+            // Parse MSRP message
+            var msg = MsrpSdk.parseMessage(socket._msrpDataBuffer.toString());
+            if (!msg) {
+                return;
+            }
 
-      session = MsrpSdk.SessionController.getSession(toUri.sessionId);
+            socket._msrpDataBuffer = new Buffer(0);
 
-      // Check if the session exists and return forbidden if it doesn't
-      if (!session) {
-        sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.SESSION_DOES_NOT_EXIST);
-        return;
-      }
+            // if response, don't worry about it
+            if (msg.status === 200) {
+                return;
+            }
 
-      if (!session.localEndpoint) {
-        session.localEndpoint = toUri;
-      }
+            // is this a report?
+            if (msg.method === 'REPORT') {
+                incomingReport(msg);
+                return;
+            }
 
-      // Check for bodiless SEND
-      if (msg.method === "SEND" && !msg.body && !msg.contentType) {
-        session.socket = socket;
-        session.emit('socketConnect', session);
+            // The toUri contains our Session-Id
+            var toUri = new MsrpSdk.URI(msg.toPath[0]);
+            var fromUri = new MsrpSdk.URI(msg.fromPath[0]);
 
-        // Is this fromURI in our session already? If not add it
-        if (!session.getRemoteEndpoint(fromUri.uri)) {
-          session.addRemoteEndpoint(fromUri.uri);
+            if (!toUri) {
+                // Send bad request
+                sendResponse(msg, socket, msg.toPath[0], MsrpSdk.Status.BAD_REQUEST);
+                return;
+            }
+
+            session = MsrpSdk.SessionController.getSession(toUri.sessionId);
+
+            // Check if the session exists and return forbidden if it doesn't
+            if (!session) {
+                sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.SESSION_DOES_NOT_EXIST);
+                return;
+            }
+
+            if (!session.localEndpoint) {
+                session.localEndpoint = toUri;
+            }
+
+            // Check for bodiless SEND (First intial send...)
+            if (msg.method === "SEND" && !msg.body && !msg.contentType) {
+                session.socket = socket;
+                session.emit('socketConnect', session);
+
+                // Is this fromURI in our session already? If not add it
+                if (!session.getRemoteEndpoint(fromUri.uri)) {
+                    session.addRemoteEndpoint(fromUri.uri);
+                }
+
+                sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.OK);
+                return;
+            }
+
+            var okStatus = true;
+            try {
+                if (msg.byteRange.start === 1 && msg.continuationFlag === MsrpSdk.Message.Flag.end) {
+                    // Non chunked message
+                    session.emit('message', msg, session);
+                } else {
+                    // Chunk of a multiple-chunk message
+                    var msgId = msg.messageId,
+                        description, filename;
+
+                    if (!msgId || !(msgId instanceof String || typeof msgId === 'string')) {
+                        sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.BAD_REQUEST);
+                        return;
+                    }
+
+                    if (msg.byteRange.start === 1 && msg.continuationFlag === MsrpSdk.Message.Flag.continued) {
+
+                        // First chunk
+                        chunkReceivers[msgId] = new MsrpSdk.ChunkReceiver(msg, 1024 * 1024);
+                        description = msg.getHeader('content-description') || null;
+                        filename = msg.contentDisposition.param.filename || null;
+
+                        // Kick off the chunk receiver poll if it's not already running
+                        if (!receiverCheckInterval) {
+                            receiverCheckInterval = setInterval(
+                                function() {
+                                    var msgId, receiver,
+                                        now = new Date().getTime(),
+                                        timeout = 30 * 1000;
+                                    for (msgId in chunkReceivers) {
+                                        receiver = chunkReceivers[msgId];
+                                        if (now - receiver.lastReceive > timeout) {
+                                            // Clean up the receiver
+                                            receiver.abort();
+                                            delete chunkReceivers[msgId];
+                                        }
+                                    }
+
+                                    if (MsrpSdk.Util.isEmpty(chunkReceivers)) {
+                                        clearInterval(receiverCheckInterval);
+                                        receiverCheckInterval = null;
+                                    }
+                                });
+                        }
+
+                    } else {
+
+                        // Subsequent chunk
+                        if (!chunkReceivers[msgId]) {
+                            // We assume we will receive chunk one first
+                            // We could allow out-of-order, but probably not worthwhile
+                            sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.STOP_SENDING);
+                            return;
+                        }
+
+                        if (!chunkReceivers[msgId].processChunk(msg)) {
+
+                            if (chunkReceivers[msgId].remoteAbort) {
+                                // TODO: what's the appropriate response to an abort?
+                                sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.STOP_SENDING);
+                            } else {
+                                // Notify the far end of the abort
+                                sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.STOP_SENDING);
+                            }
+                            // Message receive has been aborted
+                            delete chunkReceivers[msgId];
+                            return;
+                        }
+
+                        if (chunkReceivers[msgId].isComplete()) {
+
+                            var buffer = chunkReceivers[msgId].buffer;
+                            delete chunkReceivers[msgId];
+
+                            msg.body = buffer.toString('utf-8');
+
+                            session.emit('message', msg);
+
+                        } else {
+                            // Receive ongoing
+                            console.log('Receiving additional chunks for MsgId: ' + msgId + ', bytesReceived: ' + chunkReceivers[msgId].receivedBytes);
+                        }
+                    }
+                }
+            } catch (e) {
+                // Send an error response, but check which status to return
+                var status = MsrpSdk.Status.INTERNAL_SERVER_ERROR;
+                if (e instanceof MsrpSdk.Exceptions.UnsupportedMedia) {
+                    status = MsrpSdk.Status.UNSUPPORTED_MEDIA;
+                } else {
+                    logger.warning('Unexpected application exception: ' + e.stack);
+                }
+                sendResponse(msg, socket, toUri.uri, status);
+                return;
+            }
+
+            if (okStatus) {
+                sendResponse(msg, socket, toUri.uri, ConfBridge.MsrpSdk.Status.OK);
+                return;
+            }
+
+
+        });
+
+        socket.on('connect', function() {
+            console.debug('Socket connect');
+            // TODO: This listener should emit the 'socketConnect' event.
+            // The other 'socketConnect' event emitted by the SocketHandler is actually
+            // something like a 'bodylessMessageReceived' event.
+            // Since we are supporting inbound connections both are not the same anymore.
+        });
+
+        socket.on('timeout', function() {
+            console.warn('Socket timeout');
+            session.emit('socketTimeout', session);
+        });
+
+        socket.on('error', function(error) {
+            console.warn('Socket error');
+            session.emit('socketError', error, session);
+        });
+
+        socket.on('close', function(hadError) {
+            console.warn('Socket close');
+            session.emit('socketClose', hadError, session);
+        });
+
+        socket.on('end', function() {
+            console.debug('Socket ended');
+            if (session) {
+                session.emit('socketEnd', session);
+            }
+        });
+
+        return socket;
+    };
+
+    var traceMsrp = function(data) {
+        if (!data || !msrpTracingEnabled) return;
+        var print = '';
+        if (data instanceof String || typeof data === 'string') {
+            print += data;
+        } else if (data instanceof Buffer) {
+            print += String.fromCharCode.apply(null, new Uint8Array(data));
+        } else {
+            return console.warn('[Server traceMsrp] Cannot trace MSRP. Unsupported data type');
+        }
+        console.debug(print);
+    };
+
+    var sendResponse = function(req, socket, toUri, status) {
+        var msg = new MsrpSdk.Message.OutgoingResponse(req, toUri, status);
+        var encodeMsg = msg.encode();
+
+        // Write message to socket
+        socket.write(encodeMsg, function() {
+            // If request has header 'success-report', send back a report
+            if (req.getHeader('success-report') === 'yes' && status === MsrpSdk.Status.OK) {
+                sendReport(socket, {
+                    toPath: req.fromPath,
+                    localUri: toUri
+                }, req);
+            }
+
+            if (req.getHeader('failure-report') === 'yes' && status !== MsrpSdk.Status.OK) {
+                sendReport(socket, {
+                    toPath: req.fromPath,
+                    localUri: toUri
+                }, req, status);
+            }
+        });
+
+        // trace msrp message
+        traceMsrp(encodeMsg);
+    };
+
+    var incomingReport = function(report) {
+        var msgId, sender;
+
+        msgId = report.messageId;
+        if (!msgId) {
+            console.log('Invalid REPORT: no message id');
+            return;
         }
 
-        sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.OK);
-
-        if (msg.getHeader('success-report') === 'yes') {
-          sendReport(socket, {
-            toPath: msg.fromPath,
-            localUri: toUri.uri
-          }, msg);
+        // Check whether this is for a chunk sender first
+        sender = chunkSenders[msgId];
+        if (!sender) {
+            console.log('Invalid REPORT: unknown message id');
+            // Silently ignore, as suggested in 4975 section 7.1.2
+            return;
         }
 
-        return;
-      }
+        // Let the chunk sender handle the report
+        sender.processReport(report);
+        if (!sender.isComplete()) {
+            // Still expecting more reports, no notification yet
+            return;
+        }
 
-      // If response, emit response
-      if (msg.status === MsrpSdk.Status.OK) { // TODO: (LVM) Forward all responses, not only 200 OKs, right?
-        session.emit('respose', msg, session);
-        return;
-      } else {
-        // Send 200 OK to MSRP client
-        sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.OK); // (LVM): toURi or fromUri?
-      }
+        // All chunks have been acknowledged; clean up
+        delete chunkSenders[msgId];
 
-      // TODO: (LVM) Is it OK to send the report here? Before, it was a callback.
-      if (msg.getHeader('success-report') === 'yes') {
-        sendReport(socket, {
-          toPath: msg.fromPath,
-          localUri: toUri.uri
-        }, msg);
-      }
+        // Don't notify for locally aborted messages
+        if (sender.aborted && !sender.remoteAbort) {
+            return;
+        }
+    };
 
-      // Emit message
-      session.emit('message', msg, session);
-    });
+    var sendReport = function(socket, session, req, status) {
+        var report;
+        var statusNS = '000';
 
-    socket.on('connect', function() {
-      console.debug('Socket connect');
-      // TODO: This listener should emit the 'socketConnect' event.
-      // The other 'socketConnect' event emitted by the SocketHandler is actually
-      // something like a 'bodylessMessageReceived' event.
-      // Since we are supporting inbound connections both are not the same anymore.
-    });
+        if (!status) {
+            status = MsrpSdk.Status.OK + ' ' + MsrpSdk.StatusComment['200'];
+        } else {
+            status = status + ' ' + MsrpSdk.StatusComment[status];
+        }
 
-    socket.on('timeout', function() {
-      console.warn('Socket timeout');
-      session.emit('socketTimeout', session);
-    });
+        report = new MsrpSdk.Message.OutgoingRequest(session, 'REPORT');
+        report.addHeader('message-id', req.messageId);
+        report.addHeader('status', statusNS + ' ' + status);
 
-    socket.on('error', function(error) {
-      console.warn('Socket error');
-      session.emit('socketError', error, session);
-    });
+        if (req.byteRange || req.continuationFlag === MsrpSdk.Message.Flag.continued) {
+            // A REPORT Byte-Range will be required
+            var start = 1,
+                end, total = -1;
+            if (req.byteRange) {
+                // Don't trust the range end
+                start = req.byteRange.start;
+                total = req.byteRange.total;
+            }
+            if (!req.body) {
+                end = 0;
+            } else {
+                if (req.byteRange.end === req.byteRange.total) {
+                    end = req.byteRange.end;
+                } else {
+                    end = start + req.body.length - 1;
+                }
+            }
 
-    socket.on('close', function(hadError) {
-      console.warn('Socket close');
-      session.emit('socketClose', hadError, session);
-    });
+            if (end !== req.byteRange.end) {
+                logger.warning('Report Byte-Range end does not match request');
+            }
 
-    socket.on('end', function() {
-      console.debug('Socket ended');
-      if (session) {
-        session.emit('socketEnd', session);
-      }
-    });
+            report.byteRange = {
+                'start': start,
+                'end': end,
+                'total': total
+            };
+        }
 
-    return socket;
-  };
+        var encodeMsg = report.encode();
+        socket.write(encodeMsg);
+        traceMsrp(encodeMsg);
+    };
 
-  var traceMsrp = function(data) {
-    if (!data || !msrpTracingEnabled) return;
-    var print = '';
-    if (data instanceof String || typeof data === 'string') {
-      print += data;
-    } else if (data instanceof Buffer) {
-      print += String.fromCharCode.apply(null, new Uint8Array(data));
-    } else {
-      return console.warn('[Server traceMsrp] Cannot trace MSRP. Unsupported data type');
-    }
-    console.debug(print);
-  };
-
-  function sendResponse(req, socket, uri, status) {
-    var msg = new MsrpSdk.Message.OutgoingResponse(req, uri, status);
-    var msgToString = msg.encode();
-    socket.write(msgToString);
-    traceMsrp(msgToString);
-  }
-
-  var sendReport = function(socket, session, req) {
-    var report;
-
-    report = new MsrpSdk.Message.OutgoingRequest(session, 'REPORT');
-    report.addHeader('message-id', req.messageId);
-    report.addHeader('status', '000 200 OK');
-
-    if (req.byteRange || req.continuationFlag === MsrpSdk.Message.Flag.continued) {
-      // A REPORT Byte-Range will be required
-      var start = 1,
-        end, total = -1;
-      if (req.byteRange) {
-        // Don't trust the range end
-        start = req.byteRange.start;
-        total = req.byteRange.total;
-      }
-      if (!req.body) {
-        end = 0;
-      } else {
-        end = start + req.body.length - 1;
-      }
-
-      if (end !== req.byteRange.end) {
-        console.warn('Report Byte-Range end does not match request');
-      }
-
-      report.byteRange = {
-        'start': start,
-        'end': end,
-        'total': total
-      };
-    }
-
-    var reportToString = report.encode();
-    socket.write(reportToString);
-    traceMsrp(reportToString);
-  };
-
-  MsrpSdk.SocketHandler = SocketHandler;
+    MsrpSdk.SocketHandler = SocketHandler;
 };
