@@ -1,0 +1,16 @@
+{
+    "author": {
+        "email": "cwysong@indigital.net",
+        "name": "Corey Wysong"
+    },
+    "description": "A simple, intuitive, and powerful JavaScript MSRP library",
+    "engines": {
+        "node": ">=0.8"
+    },
+    "license": "UNLICENSED",
+    "private": true,
+    "main": "src/MsrpSdk.js",
+    "name": "msrpsdk",
+    "title": "MSRP-SDK.js",
+    "version": "0.0.1"
+}
