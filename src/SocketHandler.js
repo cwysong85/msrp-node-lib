@@ -184,7 +184,7 @@ module.exports = function(MsrpSdk) {
         });
 
         socket.on('connect', function() {
-            console.debug('Socket connect');
+            console.log('Socket connect');
             // TODO: This listener should emit the 'socketConnect' event.
             // The other 'socketConnect' event emitted by the SocketHandler is actually
             // something like a 'bodylessMessageReceived' event.
@@ -207,7 +207,7 @@ module.exports = function(MsrpSdk) {
         });
 
         socket.on('end', function() {
-            console.debug('Socket ended');
+            console.log('Socket ended');
             if (session) {
                 session.emit('socketEnd', session);
             }
@@ -226,7 +226,7 @@ module.exports = function(MsrpSdk) {
         } else {
             return console.warn('[Server traceMsrp] Cannot trace MSRP. Unsupported data type');
         }
-        console.debug(print);
+        console.log(print);
     };
 
     var sendResponse = function(req, socket, toUri, status) {
