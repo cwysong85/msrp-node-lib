@@ -52,8 +52,8 @@ module.exports = function(MsrpSdk) {
             sessionController.emit('message', msg, session);
         });
 
-        session.on('respose', function(msg, session) {
-            sessionController.emit('respose', msg, session);
+        session.on('response', function(msg, session) {
+            sessionController.emit('response', msg, session);
         });
 
         session.on('reinvite', function(session) {
