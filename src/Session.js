@@ -19,22 +19,14 @@ module.exports = function(MsrpSdk) {
 
     util.inherits(Session, EventEmitter); // Sessions emit events in SocketHandler
 
-    Session.prototype.sendMessage = function(msg, cb) {
-        // add send message
-        var request = new MsrpSdk.Message.OutgoingRequest({
+    Session.prototype.sendMessage = function(body, cb) {
+        this.socket.emit('send', {
+            body: body,
+            contentType: this.remoteSdp.attributes.acceptTypes.join(' ')
+        }, {
             toPath: this.remoteEndpoints,
             localUri: this.localEndpoint.uri
-        }, 'SEND');
-
-        request.addHeader('message-id', MsrpSdk.Util.newMID());
-        request.byteRange = {
-            start: 1,
-            end: msg.length,
-            total: msg.length
-        };
-        request.addTextBody(msg);
-
-        this.socket.write(request.encode(), cb);
+        }, cb);
     };
 
     Session.prototype.getRemoteEndpoint = function(remoteEndpointUri) {

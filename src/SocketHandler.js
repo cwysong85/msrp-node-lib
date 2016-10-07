@@ -5,7 +5,10 @@ module.exports = function(MsrpSdk) {
     var config = MsrpSdk.Config;
     var msrpTracingEnabled = config.traceMsrp;
     var chunkReceivers = {},
-        receiverCheckInterval = null;
+        receiverCheckInterval = null,
+        chunkSenders = {},
+        activeSenders = [],
+        outstandingSends = 0;
 
     var SocketHandler = function(socket) {
         var socketHandler = this;
@@ -213,6 +216,21 @@ module.exports = function(MsrpSdk) {
             }
         });
 
+        socket.on('send', function(message, routePaths, cb) {
+            if (!message || !routePaths) {
+                return;
+            }
+
+            var sender = new ConfBridge.MsrpSdk.ChunkSender(routePaths, message.body, message.contentType);
+            activeSenders.push({
+                sender: sender,
+                socket: socket,
+                cb: cb
+            });
+            chunkSenders[message.messageId] = sender;
+            sendRequests();
+        });
+
         return socket;
     };
 
@@ -285,6 +303,37 @@ module.exports = function(MsrpSdk) {
         // Don't notify for locally aborted messages
         if (sender.aborted && !sender.remoteAbort) {
             return;
+        }
+    };
+
+    var sendRequests = function() {
+
+        while (activeSenders.length > 0) {
+            // Use first sender in list
+            var sender = activeSenders[0].sender,
+                socket = activeSenders[0].socket,
+                cb = activeSenders[0].cb;
+
+            // abort sending?
+            if (sender.aborted && sender.remoteAbort) {
+                // Don't send any more chunks; remove sender from list
+                activeSenders.shift();
+            }
+
+            var msg = sender.getNextChunk();
+            var encodeMsg = msg.encode();
+            socket.write(encodeMsg);
+            traceMsrp(encodeMsg);
+
+            // Check whether this sender has now completed
+            if (sender.isSendComplete()) {
+                // Remove this sender from the active list
+                activeSenders.shift();
+                cb();
+            } else if (activeSenders.length > 1) {
+                // For fairness, move this sender to the end of the queue
+                activeSenders.push(activeSenders.shift());
+            }
         }
     };
 
