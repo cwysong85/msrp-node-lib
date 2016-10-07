@@ -221,7 +221,7 @@ module.exports = function(MsrpSdk) {
                 return;
             }
 
-            var sender = new ConfBridge.MsrpSdk.ChunkSender(routePaths, message.body, message.contentType);
+            var sender = new MsrpSdk.ChunkSender(routePaths, message.body, message.contentType);
             activeSenders.push({
                 sender: sender,
                 socket: socket,
