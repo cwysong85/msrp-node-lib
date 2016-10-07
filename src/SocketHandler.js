@@ -176,7 +176,7 @@ module.exports = function(MsrpSdk) {
             }
 
             if (okStatus) {
-                sendResponse(msg, socket, toUri.uri, ConfBridge.MsrpSdk.Status.OK);
+                sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.OK);
                 return;
             }
 
