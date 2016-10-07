@@ -172,7 +172,7 @@ module.exports = function(MsrpSdk) {
                 if (e instanceof MsrpSdk.Exceptions.UnsupportedMedia) {
                     status = MsrpSdk.Status.UNSUPPORTED_MEDIA;
                 } else {
-                    logger.warning('Unexpected application exception: ' + e.stack);
+                    console.warn('Unexpected application exception: ' + e.stack);
                 }
                 sendResponse(msg, socket, toUri.uri, status);
                 return;
@@ -371,7 +371,7 @@ module.exports = function(MsrpSdk) {
             }
 
             if (end !== req.byteRange.end) {
-                logger.warning('Report Byte-Range end does not match request');
+                console.warn('Report Byte-Range end does not match request');
             }
 
             report.byteRange = {
