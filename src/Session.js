@@ -160,6 +160,12 @@ module.exports = function(MsrpSdk) {
         onSuccess();
     };
 
+    Session.prototype.end = function() {
+        if (this.socket) {
+            this.socket.end();
+        }
+    };
+
     Session.prototype.startConnection = function(cb) {
         var session = this;
 
