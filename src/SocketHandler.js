@@ -196,17 +196,23 @@ module.exports = function(MsrpSdk) {
 
         socket.on('timeout', function() {
             console.warn('Socket timeout');
-            session.emit('socketTimeout', session);
+            if (session) {
+                session.emit('socketTimeout', session);
+            }
         });
 
         socket.on('error', function(error) {
             console.warn('Socket error');
-            session.emit('socketError', error, session);
+            if (session) {
+                session.emit('socketError', error, session);
+            }
         });
 
         socket.on('close', function(hadError) {
             console.warn('Socket close');
-            session.emit('socketClose', hadError, session);
+            if (session) {
+                session.emit('socketClose', hadError, session);
+            }
         });
 
         socket.on('end', function() {
