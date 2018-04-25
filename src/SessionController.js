@@ -13,26 +13,6 @@ module.exports = function(MsrpSdk) {
         var session = new MsrpSdk.Session();
         this.forwardEvents(session);
         sessions[session.sid] = session;
-
-
-        // add send message
-        session.sendMessage = function(msg, cb) {
-            var request = new MsrpSdk.Message.OutgoingRequest({
-                toPath: session.remoteEndpoints,
-                localUri: session.localEndpoint.uri
-            }, 'SEND');
-
-            request.addHeader('message-id', MsrpSdk.Util.newMID());
-            request.byteRange = {
-                start: 1,
-                end: msg.length,
-                total: msg.length
-            };
-            request.addTextBody(msg);
-
-            session.socket.write(request.encode(), cb);
-        };
-
         return session;
     };
 
@@ -52,8 +32,8 @@ module.exports = function(MsrpSdk) {
             sessionController.emit('message', msg, session);
         });
 
-        session.on('respose', function(msg, session) {
-            sessionController.emit('respose', msg, session);
+        session.on('response', function(msg, session) {
+            sessionController.emit('response', msg, session);
         });
 
         session.on('reinvite', function(session) {
@@ -62,6 +42,11 @@ module.exports = function(MsrpSdk) {
 
         session.on('socketClose', function(hadError, session) {
             sessionController.emit('socketClose', hadError, session);
+            if(session) {
+              try {
+                sessionController.removeSession(session.sid);
+              } catch(e) { }
+            }
         });
 
         session.on('socketConnect', function(session) {
@@ -70,14 +55,29 @@ module.exports = function(MsrpSdk) {
 
         session.on('socketEnd', function(session) {
             sessionController.emit('socketEnd', session);
+            if(session) {
+              try {
+                sessionController.removeSession(session.sid);
+              } catch(e) { }
+            }
         });
 
         session.on('socketError', function(error, session) {
             sessionController.emit('socketError', error, session);
+            if(session) {
+              try {
+                sessionController.removeSession(session.sid);
+              } catch(e) { }
+            }
         });
 
         session.on('socketTimeout', function(session) {
             sessionController.emit('socketTimeout', session);
+            if(session) {
+              try {
+                sessionController.removeSession(session.sid);
+              } catch(e) { }
+            }
         });
     };
 
