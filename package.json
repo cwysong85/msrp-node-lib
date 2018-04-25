@@ -1,16 +1,19 @@
 {
-    "author": {
-        "email": "cwysong@indigital.net",
-        "name": "Corey Wysong"
-    },
-    "description": "A simple, intuitive, and powerful JavaScript MSRP library",
-    "engines": {
-        "node": ">=0.8"
-    },
-    "license": "UNLICENSED",
-    "private": true,
-    "main": "src/MsrpSdk.js",
-    "name": "msrpsdk",
-    "title": "MSRP-SDK.js",
-    "version": "0.0.2"
+  "author": {
+    "email": "cwysong85@gmail.com",
+    "name": "Corey Wysong"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cwysong85/msrp-node-lib"
+  },
+  "description": "A simple, intuitive MSRP JavaScript library",
+  "engines": {
+    "node": ">=0.8"
+  },
+  "license": "MIT",
+  "main": "src/MsrpSdk.js",
+  "name": "msrp-node-lib",
+  "title": "msrp-node-lib",
+  "version": "0.0.3"
 }
