@@ -2,38 +2,46 @@ var MsrpSdk = {};
 
 module.exports = function(config, logger) {
 
-  // Set configuration
-  MsrpSdk.Config = config;
-  MsrpSdk.Logger = logger || console;
+    // Set configuration
+    MsrpSdk.Config = config;
+    MsrpSdk.Logger = logger || console;
 
-  // Gather MSRP library elements
-  require('./Status.js')(MsrpSdk); // No dependencies
-  require('./URI.js')(MsrpSdk); // No dependencies
-  require('./Util.js')(MsrpSdk); // No dependencies
+    if (!MsrpSdk.Logger.warn) {
+        if (typeof MsrpSdk.Logger.warning === "function") {
+            MsrpSdk.Logger.warn = MsrpSdk.Logger.warning;
+        } else {
+            MsrpSdk.Logger.warn = console.warn;
+        }
+    }
 
-  require('./ContentType.js')(MsrpSdk); // Depends on: Util
-  require('./User.js')(MsrpSdk); // Depends on: URI
+    // Gather MSRP library elements
+    require('./Status.js')(MsrpSdk); // No dependencies
+    require('./URI.js')(MsrpSdk); // No dependencies
+    require('./Util.js')(MsrpSdk); // No dependencies
 
-  require('./Sdp.js')(MsrpSdk); // Depends on: Content-Type, Util
-  require('./Message.js')(MsrpSdk); // Depends on: Content-Type, Status, Util
+    require('./ContentType.js')(MsrpSdk); // Depends on: Util
+    require('./User.js')(MsrpSdk); // Depends on: URI
 
-  require('./Exceptions.js')(MsrpSdk);
-  require('./ChunkReceiver.js')(MsrpSdk);
-  require('./ChunkSender.js')(MsrpSdk); // Depends on: Message, Status, Util
-  require('./Parser.js')(MsrpSdk); // Depends on: Message
+    require('./Sdp.js')(MsrpSdk); // Depends on: Content-Type, Util
+    require('./Message.js')(MsrpSdk); // Depends on: Content-Type, Status, Util
 
-  require('./Server.js')(MsrpSdk); // Depends on: Config, Message, SocketHandler
-  require('./Session.js')(MsrpSdk); // Depends on: Config, Message, Sdp, SocketHandler, URI, Util
+    require('./Exceptions.js')(MsrpSdk);
+    require('./ChunkReceiver.js')(MsrpSdk);
+    require('./ChunkSender.js')(MsrpSdk); // Depends on: Message, Status, Util
+    require('./Parser.js')(MsrpSdk); // Depends on: Message
 
-  require('./SessionController.js')(MsrpSdk); // Depends on: Session
+    require('./Server.js')(MsrpSdk); // Depends on: Config, Message, SocketHandler
+    require('./Session.js')(MsrpSdk); // Depends on: Config, Message, Sdp, SocketHandler, URI, Util
 
-  require('./SocketHandler.js')(MsrpSdk); // Depends on: Message, Parser, SessionController, Status, URI
+    require('./SessionController.js')(MsrpSdk); // Depends on: Session
 
-  // TODO:
-  // NOTE: There is a circular dependency
-  // SessionController depends on Session.
-  // Session depends on SocketHandler.
-  // SocketHandler depends on SessionController.
+    require('./SocketHandler.js')(MsrpSdk); // Depends on: Message, Parser, SessionController, Status, URI
 
-  return MsrpSdk;
+    // TODO:
+    // NOTE: There is a circular dependency
+    // SessionController depends on Session.
+    // Session depends on SocketHandler.
+    // SocketHandler depends on SessionController.
+
+    return MsrpSdk;
 };
