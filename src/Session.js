@@ -100,7 +100,7 @@ module.exports = function(MsrpSdk) {
             if (session.remoteSdp.attributes.setup[0] !== 'active') {
                 sdp.addAttribute('setup', 'active');
                 session.startConnection(function() {
-                    // MsrpSdk.Logger.log('REINVITING');
+                    // MsrpSdk.Logger.info('REINVITING');
                     session.emit('reinvite', session);
                     session.reinvite = false;
                 });

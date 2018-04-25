@@ -14,6 +14,10 @@ module.exports = function(config, logger) {
         }
     }
 
+    if (!MsrpSdk.Logger.info) {
+        MsrpSdk.Logger.info = console.log;
+    }
+
     // Gather MSRP library elements
     require('./Status.js')(MsrpSdk); // No dependencies
     require('./URI.js')(MsrpSdk); // No dependencies

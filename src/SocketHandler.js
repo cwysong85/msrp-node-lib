@@ -162,7 +162,7 @@ module.exports = function(MsrpSdk) {
 
                         } else {
                             // Receive ongoing
-                            MsrpSdk.Logger.log('Receiving additional chunks for MsgId: ' + msgId + ', bytesReceived: ' + chunkReceivers[msgId].receivedBytes);
+                            MsrpSdk.Logger.info('Receiving additional chunks for MsgId: ' + msgId + ', bytesReceived: ' + chunkReceivers[msgId].receivedBytes);
                         }
                     }
                 }
@@ -187,7 +187,7 @@ module.exports = function(MsrpSdk) {
         });
 
         socket.on('connect', function() {
-            MsrpSdk.Logger.log('Socket connect');
+            MsrpSdk.Logger.info('Socket connect');
             // TODO: This listener should emit the 'socketConnect' event.
             // The other 'socketConnect' event emitted by the SocketHandler is actually
             // something like a 'bodylessMessageReceived' event.
@@ -216,7 +216,7 @@ module.exports = function(MsrpSdk) {
         });
 
         socket.on('end', function() {
-            MsrpSdk.Logger.log('Socket ended');
+            MsrpSdk.Logger.info('Socket ended');
             if (session) {
                 session.emit('socketEnd', session);
             }
@@ -250,7 +250,7 @@ module.exports = function(MsrpSdk) {
         } else {
             return MsrpSdk.Logger.warn('[Server traceMsrp] Cannot trace MSRP. Unsupported data type');
         }
-        MsrpSdk.Logger.log(print);
+        MsrpSdk.Logger.info(print);
     };
 
     var sendResponse = function(req, socket, toUri, status) {
@@ -284,14 +284,14 @@ module.exports = function(MsrpSdk) {
 
         msgId = report.messageId;
         if (!msgId) {
-            MsrpSdk.Logger.log('Invalid REPORT: no message id');
+            MsrpSdk.Logger.info('Invalid REPORT: no message id');
             return;
         }
 
         // Check whether this is for a chunk sender first
         sender = chunkSenders[msgId];
         if (!sender) {
-            MsrpSdk.Logger.log('Invalid REPORT: unknown message id');
+            MsrpSdk.Logger.info('Invalid REPORT: unknown message id');
             // Silently ignore, as suggested in 4975 section 7.1.2
             return;
         }

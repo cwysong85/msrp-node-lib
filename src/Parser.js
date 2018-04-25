@@ -20,7 +20,7 @@ module.exports = function(MsrpSdk) {
         } else if (data instanceof String || typeof data === 'string') {
             msg = data;
         } else {
-            MsrpSdk.Logger.log('Unexpected parameter type');
+            MsrpSdk.Logger.info('Unexpected parameter type');
             return null;
         }
 
