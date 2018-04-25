@@ -12,5 +12,5 @@
     "main": "src/MsrpSdk.js",
     "name": "msrpsdk",
     "title": "MSRP-SDK.js",
-    "version": "0.0.1"
+    "version": "0.0.2"
 }
