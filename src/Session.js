@@ -100,7 +100,7 @@ module.exports = function(MsrpSdk) {
             if (session.remoteSdp.attributes.setup[0] !== 'active') {
                 sdp.addAttribute('setup', 'active');
                 session.startConnection(function() {
-                    // console.log('REINVITING');
+                    // MsrpSdk.Logger.log('REINVITING');
                     session.emit('reinvite', session);
                     session.reinvite = false;
                 });
@@ -199,7 +199,7 @@ module.exports = function(MsrpSdk) {
                         };
                     });
                 } catch (e) {
-                    console.log(e);
+                    MsrpSdk.Logger.error(e);
                 }
             });
         }

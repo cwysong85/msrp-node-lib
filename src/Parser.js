@@ -20,14 +20,14 @@ module.exports = function(MsrpSdk) {
         } else if (data instanceof String || typeof data === 'string') {
             msg = data;
         } else {
-            console.log('Unexpected parameter type');
+            MsrpSdk.Logger.log('Unexpected parameter type');
             return null;
         }
 
         // Extract and parse the first line
         endIndex = msg.indexOf(lineEnd);
         if (endIndex === -1) {
-            console.warn('Error parsing message: no CRLF');
+            MsrpSdk.Logger.warn('Error parsing message: no CRLF');
             return null;
         }
 
@@ -35,7 +35,7 @@ module.exports = function(MsrpSdk) {
         tokens = firstLine.split(' ');
         if (tokens.length < 3 || tokens[0] !== 'MSRP' ||
             tokens[1].length === 0 || tokens[2].length === 0) {
-            console.warn('Error parsing message: unexpected first line format: ' + firstLine);
+            MsrpSdk.Logger.warn('Error parsing message: unexpected first line format: ' + firstLine);
             return null;
         }
 
@@ -51,7 +51,7 @@ module.exports = function(MsrpSdk) {
         } else if (tokens.length === 3) {
             msgObj = new MsrpSdk.Message.IncomingRequest(tokens[1], tokens[2]);
         } else {
-            console.warn('Error parsing message: unexpected first line format: ' + firstLine);
+            MsrpSdk.Logger.warn('Error parsing message: unexpected first line format: ' + firstLine);
             return null;
         }
 
@@ -70,7 +70,7 @@ module.exports = function(MsrpSdk) {
 
         // Perform further processing on selected headers
         if (!parseKnownHeaders(msgObj)) {
-            console.warn("Error parsing message: parseKnownHeaders failed");
+            MsrpSdk.Logger.warn("Error parsing message: parseKnownHeaders failed");
             return null;
         }
 
@@ -81,7 +81,7 @@ module.exports = function(MsrpSdk) {
             startIndex += lineEnd.length;
             endIndex = msg.indexOf(lineEnd + endLineNoFlag, startIndex);
             if (endIndex === -1) {
-                console.warn("Error parsing message: no end line after body");
+                MsrpSdk.Logger.warn("Error parsing message: no end line after body");
                 return null;
             }
             if (data instanceof ArrayBuffer) {
@@ -138,26 +138,26 @@ module.exports = function(MsrpSdk) {
         endIndex = msg.indexOf('\r\n', startIndex);
         if (endIndex === -1) {
             // Oops - invalid message
-            console.warn('Error parsing header: no CRLF');
+            MsrpSdk.Logger.warn('Error parsing header: no CRLF');
             return -1;
         }
 
         colonIndex = msg.indexOf(':', startIndex);
         if (colonIndex === -1) {
             // Oops - invalid message
-            console.warn('Error parsing header: no colon');
+            MsrpSdk.Logger.warn('Error parsing header: no colon');
             return -1;
         }
 
         name = chomp(msg.substring(startIndex, colonIndex));
         if (name.length === 0) {
-            console.warn('Error parsing header: no name');
+            MsrpSdk.Logger.warn('Error parsing header: no name');
             return -1;
         }
 
         value = chomp(msg.substring(colonIndex + 1, endIndex));
         if (name.length === 0) {
-            console.warn('Error parsing header: no value');
+            MsrpSdk.Logger.warn('Error parsing header: no value');
             return -1;
         }
 
@@ -248,7 +248,7 @@ module.exports = function(MsrpSdk) {
         rangeSepIndex = value.indexOf('-');
         totalSepIndex = value.indexOf('/', rangeSepIndex);
         if (rangeSepIndex === -1 || totalSepIndex === -1) {
-            console.warn('Unexpected Byte-Range format: ' + value);
+            MsrpSdk.Logger.warn('Unexpected Byte-Range format: ' + value);
             return false;
         }
 
@@ -267,7 +267,7 @@ module.exports = function(MsrpSdk) {
         }
 
         if (isNaN(range.start) || isNaN(range.end) || isNaN(range.total)) {
-            console.warn('Unexpected Byte-Range values: ' + value);
+            MsrpSdk.Logger.warn('Unexpected Byte-Range values: ' + value);
             return false;
         }
 
@@ -278,7 +278,7 @@ module.exports = function(MsrpSdk) {
     function parseFailureReport(headerArray, msgObj) {
         // We only expect one Failure-Report header
         if (headerArray.length !== 1) {
-            console.warn('Multiple Failure-Report headers');
+            MsrpSdk.Logger.warn('Multiple Failure-Report headers');
             return false;
         }
 
@@ -302,7 +302,7 @@ module.exports = function(MsrpSdk) {
                 };
                 break;
             default:
-                console.warn('Unexpected Failure-Report header: ' + headerArray[0]);
+                MsrpSdk.Logger.warn('Unexpected Failure-Report header: ' + headerArray[0]);
                 return false;
         }
 
@@ -315,19 +315,19 @@ module.exports = function(MsrpSdk) {
         // We only expect Status headers on REPORT requests.  Ignore the header
         // if we find it on a response.
         if (msgObj instanceof MsrpSdk.Message.Response) {
-            console.debug('Ignoring Status header on response');
+            MsrpSdk.Logger.debug('Ignoring Status header on response');
             return true;
         }
 
         // We only expect one Status header
         if (headerArray.length !== 1) {
-            console.warn('Multiple Status headers');
+            MsrpSdk.Logger.warn('Multiple Status headers');
             return false;
         }
 
         splitValue = headerArray[0].split(' ');
         if (splitValue.length < 2 || splitValue.shift() !== '000') {
-            console.warn('Unexpected Status header: ' + headerArray[0]);
+            MsrpSdk.Logger.warn('Unexpected Status header: ' + headerArray[0]);
             return false;
         }
 
@@ -340,13 +340,13 @@ module.exports = function(MsrpSdk) {
     function parseUsePath(headerArray, msgObj) {
         // We only expect one Use-Path header
         if (headerArray.length !== 1) {
-            console.warn('Multiple Use-Path headers');
+            MsrpSdk.Logger.warn('Multiple Use-Path headers');
             return false;
         }
 
         msgObj.usePath = headerArray[0].split(' ');
         if (msgObj.usePath.length < 1) {
-            console.warn('Unexpected Use-Path header: ' + headerArray[0]);
+            MsrpSdk.Logger.warn('Unexpected Use-Path header: ' + headerArray[0]);
             return false;
         }
 
@@ -356,13 +356,13 @@ module.exports = function(MsrpSdk) {
     function parseExpires(headerArray, msgObj) {
         // We only expect one Expires header
         if (headerArray.length !== 1) {
-            console.warn('Multiple Expires headers');
+            MsrpSdk.Logger.warn('Multiple Expires headers');
             return false;
         }
 
         msgObj.expires = parseInt(headerArray[0], 10);
         if (isNaN(msgObj.expires)) {
-            console.warn('Unexpected Expires header: ' + headerArray[0]);
+            MsrpSdk.Logger.warn('Unexpected Expires header: ' + headerArray[0]);
             return false;
         }
 
@@ -375,19 +375,19 @@ module.exports = function(MsrpSdk) {
         // We only expect MIME headers on SEND requests.  Ignore the header
         // if we find it on a response.
         if (msgObj instanceof MsrpSdk.Message.Response) {
-            console.debug('Ignoring Content-Disposition header on response');
+            MsrpSdk.Logger.debug('Ignoring Content-Disposition header on response');
             return true;
         }
 
         // We only expect one Content-Disposition header
         if (headerArray.length !== 1) {
-            console.warn('Multiple Content-Disposition headers');
+            MsrpSdk.Logger.warn('Multiple Content-Disposition headers');
             return false;
         }
 
         splitValue = headerArray[0].split(';');
         if (splitValue.length < 1) {
-            console.warn('Unexpected Content-Disposition header: ' + headerArray[0]);
+            MsrpSdk.Logger.warn('Unexpected Content-Disposition header: ' + headerArray[0]);
             return false;
         }
 
@@ -397,7 +397,7 @@ module.exports = function(MsrpSdk) {
         for (index in splitValue) {
             splitParam = splitValue[index].split('=');
             if (splitParam.length !== 2) {
-                console.warn('Unexpected Content-Disposition param: ' + splitValue[index]);
+                MsrpSdk.Logger.warn('Unexpected Content-Disposition param: ' + splitValue[index]);
                 return false;
             }
 
@@ -410,13 +410,13 @@ module.exports = function(MsrpSdk) {
     function parseMsgId(headerArray, msgObj) {
         // We only expect one Message-ID header
         if (headerArray.length !== 1) {
-            console.warn('Multiple Message-ID headers');
+            MsrpSdk.Logger.warn('Multiple Message-ID headers');
             return false;
         }
 
         msgObj.messageId = chomp(headerArray[0]);
         if (msgObj.messageId.length < 1) {
-            console.warn('Unexpected Message-ID header: ' + headerArray[0]);
+            MsrpSdk.Logger.warn('Unexpected Message-ID header: ' + headerArray[0]);
             return false;
         }
 
@@ -446,7 +446,7 @@ module.exports = function(MsrpSdk) {
             }
 
             if (!parseFn(msgObj.headers[header], msgObj)) {
-                console.error('Parsing failed for header ' + header);
+                MsrpSdk.Logger.error('Parsing failed for header ' + header);
                 return false;
             }
         }

@@ -58,7 +58,7 @@ module.exports = function(MsrpSdk) {
     }
 
     if (chunk.messageId !== this.firstChunk.messageId) {
-      console.error('Chunk has wrong message ID!');
+      MsrpSdk.Logger.error('Chunk has wrong message ID!');
       return false;
     }
 

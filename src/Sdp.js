@@ -78,20 +78,20 @@ module.exports = function(MsrpSdk) {
     }
 
     if (lines.length < 4) {
-      console.warn('Unexpected SDP length: ' + lines.length);
+      MsrpSdk.Logger.warn('Unexpected SDP length: ' + lines.length);
       return false;
     }
 
     line = lines.shift();
     if (line !== 'v=0') {
-      console.warn('Unexpected SDP version: ' + line);
+      MsrpSdk.Logger.warn('Unexpected SDP version: ' + line);
       return false;
     }
 
     line = lines.shift();
     if (line.substr(0, 2) !== 'o=' ||
       !(this.origin = new MsrpSdk.Sdp.Origin(line.substr(2)))) {
-      console.warn('Unexpected SDP origin: ' + line);
+      MsrpSdk.Logger.warn('Unexpected SDP origin: ' + line);
       return false;
     }
 
@@ -99,7 +99,7 @@ module.exports = function(MsrpSdk) {
     if (line.substr(0, 2) === 's=') {
       this.sessionName = line.substr(2);
     } else {
-      console.warn('Unexpected SDP session name: ' + line);
+      MsrpSdk.Logger.warn('Unexpected SDP session name: ' + line);
       return false;
     }
 
@@ -132,13 +132,13 @@ module.exports = function(MsrpSdk) {
           this.bandwidth.push(value);
           break;
         default:
-          console.warn('Unexpected SDP line (pre-timing): ' + line);
+          MsrpSdk.Logger.warn('Unexpected SDP line (pre-timing): ' + line);
           return false;
       }
     }
 
     if (lines.length === 0) {
-      console.warn('Unexpected end of SDP (pre-timing)');
+      MsrpSdk.Logger.warn('Unexpected end of SDP (pre-timing)');
       return false;
     }
 
@@ -158,7 +158,7 @@ module.exports = function(MsrpSdk) {
     }
 
     if (this.timing.length === 0) {
-      console.warn('No timing line found');
+      MsrpSdk.Logger.warn('No timing line found');
       return false;
     }
 
@@ -186,7 +186,7 @@ module.exports = function(MsrpSdk) {
           this.addAttribute(aName, value);
           break;
         default:
-          console.warn('Unexpected SDP line (pre-media): ' + line);
+          MsrpSdk.Logger.warn('Unexpected SDP line (pre-media): ' + line);
           return false;
       }
     }
@@ -285,7 +285,7 @@ module.exports = function(MsrpSdk) {
 
     split = origin.split(' ');
     if (split.length !== 6) {
-      console.warn('Unexpected origin line: ' + origin);
+      MsrpSdk.Logger.warn('Unexpected origin line: ' + origin);
       return false;
     }
 
@@ -332,7 +332,7 @@ module.exports = function(MsrpSdk) {
 
     split = con.split(' ');
     if (split.length !== 3) {
-      console.warn('Unexpected connection line: ' + con);
+      MsrpSdk.Logger.warn('Unexpected connection line: ' + con);
       return false;
     }
 
@@ -377,7 +377,7 @@ module.exports = function(MsrpSdk) {
 
     tokens = tLine.split(' ');
     if (tokens.length !== 2) {
-      console.warn('Unexpected timing line: ' + tLine);
+      MsrpSdk.Logger.warn('Unexpected timing line: ' + tLine);
       return false;
     }
 
@@ -480,7 +480,7 @@ module.exports = function(MsrpSdk) {
 
     tokens = mLine.split(' ');
     if (tokens.length < 4) {
-      console.warn('Unexpected media line: ' + mLine);
+      MsrpSdk.Logger.warn('Unexpected media line: ' + mLine);
       return false;
     }
 
@@ -521,7 +521,7 @@ module.exports = function(MsrpSdk) {
           this.addAttribute(aName, value);
           break;
         default:
-          console.warn('Unexpected type (within media): ' + lines[index]);
+          MsrpSdk.Logger.warn('Unexpected type (within media): ' + lines[index]);
           return false;
       }
     }

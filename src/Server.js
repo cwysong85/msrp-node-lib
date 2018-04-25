@@ -20,7 +20,7 @@ module.exports = function(MsrpSdk) {
 
         this.server = net.createServer(function(socket) {
             // TODO: INBOUND -  Remove next line
-            console.warn('CALLING SOCKET HANDLER FROM SERVER');
+            MsrpSdk.Logger.warn('CALLING SOCKET HANDLER FROM SERVER');
 
             // TODO: INBOUND - Review this
             socket = new MsrpSdk.SocketHandler(socket);
@@ -34,16 +34,16 @@ module.exports = function(MsrpSdk) {
         var server = this;
         this.server.listen(config.port, config.host, function() {
             var serv = server.server.address();
-            console.info('MSRP TCP server listening on ' + serv.address + ':' + serv.port);
+            MsrpSdk.Logger.info('MSRP TCP server listening on ' + serv.address + ':' + serv.port);
             if (msrpTracingEnabled) {
-                console.info('MSRP tracing enabled');
+                MsrpSdk.Logger.info('MSRP tracing enabled');
             }
 
             if (done) {
                 done();
             }
         }).on('error', function(error) {
-            console.warn(error);
+            MsrpSdk.Logger.warn(error);
             if (done) {
                 done(error);
             }

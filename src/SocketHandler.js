@@ -162,7 +162,7 @@ module.exports = function(MsrpSdk) {
 
                         } else {
                             // Receive ongoing
-                            console.log('Receiving additional chunks for MsgId: ' + msgId + ', bytesReceived: ' + chunkReceivers[msgId].receivedBytes);
+                            MsrpSdk.Logger.log('Receiving additional chunks for MsgId: ' + msgId + ', bytesReceived: ' + chunkReceivers[msgId].receivedBytes);
                         }
                     }
                 }
@@ -172,7 +172,7 @@ module.exports = function(MsrpSdk) {
                 if (e instanceof MsrpSdk.Exceptions.UnsupportedMedia) {
                     status = MsrpSdk.Status.UNSUPPORTED_MEDIA;
                 } else {
-                    console.warn('Unexpected application exception: ' + e.stack);
+                    MsrpSdk.Logger.warn('Unexpected application exception: ' + e.stack);
                 }
                 sendResponse(msg, socket, toUri.uri, status);
                 return;
@@ -187,7 +187,7 @@ module.exports = function(MsrpSdk) {
         });
 
         socket.on('connect', function() {
-            console.log('Socket connect');
+            MsrpSdk.Logger.log('Socket connect');
             // TODO: This listener should emit the 'socketConnect' event.
             // The other 'socketConnect' event emitted by the SocketHandler is actually
             // something like a 'bodylessMessageReceived' event.
@@ -195,28 +195,28 @@ module.exports = function(MsrpSdk) {
         });
 
         socket.on('timeout', function() {
-            console.warn('Socket timeout');
+            MsrpSdk.Logger.warn('Socket timeout');
             if (session) {
                 session.emit('socketTimeout', session);
             }
         });
 
         socket.on('error', function(error) {
-            console.warn('Socket error');
+            MsrpSdk.Logger.warn('Socket error');
             if (session) {
                 session.emit('socketError', error, session);
             }
         });
 
         socket.on('close', function(hadError) {
-            console.warn('Socket close');
+            MsrpSdk.Logger.warn('Socket close');
             if (session) {
                 session.emit('socketClose', hadError, session);
             }
         });
 
         socket.on('end', function() {
-            console.log('Socket ended');
+            MsrpSdk.Logger.log('Socket ended');
             if (session) {
                 session.emit('socketEnd', session);
             }
@@ -248,9 +248,9 @@ module.exports = function(MsrpSdk) {
         } else if (data instanceof Buffer) {
             print += String.fromCharCode.apply(null, new Uint8Array(data));
         } else {
-            return console.warn('[Server traceMsrp] Cannot trace MSRP. Unsupported data type');
+            return MsrpSdk.Logger.warn('[Server traceMsrp] Cannot trace MSRP. Unsupported data type');
         }
-        console.log(print);
+        MsrpSdk.Logger.log(print);
     };
 
     var sendResponse = function(req, socket, toUri, status) {
@@ -284,14 +284,14 @@ module.exports = function(MsrpSdk) {
 
         msgId = report.messageId;
         if (!msgId) {
-            console.log('Invalid REPORT: no message id');
+            MsrpSdk.Logger.log('Invalid REPORT: no message id');
             return;
         }
 
         // Check whether this is for a chunk sender first
         sender = chunkSenders[msgId];
         if (!sender) {
-            console.log('Invalid REPORT: unknown message id');
+            MsrpSdk.Logger.log('Invalid REPORT: unknown message id');
             // Silently ignore, as suggested in 4975 section 7.1.2
             return;
         }
@@ -377,7 +377,7 @@ module.exports = function(MsrpSdk) {
             }
 
             if (end !== req.byteRange.end) {
-                console.warn('Report Byte-Range end does not match request');
+                MsrpSdk.Logger.warn('Report Byte-Range end does not match request');
             }
 
             report.byteRange = {

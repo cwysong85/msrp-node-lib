@@ -1,9 +1,10 @@
 var MsrpSdk = {};
 
-module.exports = function(config) {
+module.exports = function(config, logger) {
 
   // Set configuration
   MsrpSdk.Config = config;
+  MsrpSdk.Logger = logger || console;
 
   // Gather MSRP library elements
   require('./Status.js')(MsrpSdk); // No dependencies

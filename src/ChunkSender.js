@@ -128,7 +128,7 @@ module.exports = function(MsrpSdk) {
   ChunkSender.prototype.processReport = function(report) {
     var start, appended = true;
     if (report.messageId !== this.messageId) {
-      console.error('REPORT has wrong message ID!');
+      MsrpSdk.Logger.error('REPORT has wrong message ID!');
       return;
     }
     if (report.status !== MsrpSdk.Status.OK) {
@@ -199,7 +199,7 @@ module.exports = function(MsrpSdk) {
     this.sentBytes = this.ackedBytes;
     this.incontiguousReports = {};
     this.incontiguousReportCount = 0;
-    console.info('Resuming at offset ' + this.sentBytes);
+    MsrpSdk.Logger.info('Resuming at offset ' + this.sentBytes);
   };
   /**
    * Requests that we abort this outgoing chunked message. The next chunk will
