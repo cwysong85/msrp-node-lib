@@ -20,13 +20,26 @@ module.exports = function(MsrpSdk) {
     util.inherits(Session, EventEmitter); // Sessions emit events in SocketHandler
 
     Session.prototype.sendMessage = function(body, cb) {
-        this.socket.emit('send', {
-            body: body,
-            contentType: this.remoteSdp.attributes.acceptTypes.join(' ')
-        }, {
-            toPath: this.remoteEndpoints,
-            localUri: this.localEndpoint.uri
-        }, cb);
+
+        var canSend = false;
+        for (var i = this.remoteSdp.attributes.acceptTypes.length - 1; i >= 0; i--) {
+            if (this.remoteSdp.attributes.acceptTypes[i] === "text/plain" || this.remoteSdp.attributes.acceptTypes[i] === "*") {
+                canSend = true;
+            }
+        }
+
+        if (canSend) {
+            this.socket.emit('send', {
+                body: body,
+                contentType: "text/plain"
+            }, {
+                toPath: this.remoteEndpoints,
+                localUri: this.localEndpoint.uri
+            }, cb);
+        } else {
+            MsrpSdk.Logger.warn('[MSRP Session] Cannot send message due to incompatible content types exchanged in SDP');
+            return;
+        }
     };
 
     Session.prototype.getRemoteEndpoint = function(remoteEndpointUri) {
