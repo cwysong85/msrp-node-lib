@@ -4,7 +4,7 @@
 
 Create the MSRP library with minimal settings:
 ```
-var MsrpSdk = require('msrp-node-lib')({
+var msrp = require('msrp-node-lib')({
     host: '127.0.0.1',
     port: 2855,
     traceMsrp: true,
@@ -17,30 +17,30 @@ var MsrpSdk = require('msrp-node-lib')({
 You can also pass a custom `logger` to the MSRP library, otherwise the `console` logging methods are used. Here is an example of passing the custom logger to the MSRP library:
 ```
 var winston = require('winston');
-var Logger = new(winston.Logger)({
-  levels: {
-    debug: 0,
-    info: 1,
-    warning: 2,
-    error: 3
-  }
-});
 
-var MsrpSdk = require('msrp-node-lib')({
+var msrp = require('msrp-node-lib')(
+{
     host: '127.0.0.1',
     port: 2855,
     traceMsrp: true,
     sessionName: 'user-a',
     acceptTypes: 'text/plain',
     setup: 'active'
-}, Logger);
+}, new(winston.Logger)({
+    levels: {
+        debug: 0,
+        info: 1,
+        warning: 2,
+        error: 3
+    }
+}));
 ```
 
 
 Start MSRP server:
 ```
 // create msrp server
-var msrpServer = new MsrpSdk.Server();
+var msrpServer = new msrp.Server();
 
 // start server
 msrpServer.start();
@@ -54,7 +54,7 @@ msrpServer.on('socketConnect', function(session) {
     console.log('MSRP socket connected!');
     
     // create a session
-    var msrpSession = MsrpSdk.SessionController.createSession();
+    var msrpSession = msrp.SessionController.createSession();
 
     // send a message from this session
     msrpSession.sendMessage('Hello world!', function() {
