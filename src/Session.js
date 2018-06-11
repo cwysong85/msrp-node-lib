@@ -98,7 +98,7 @@ module.exports = function(MsrpSdk) {
           return onFailure('Invalid a=setup value');
         }
       } else {
-        sdp.addAttribute('setup', 'active');
+        sdp.addAttribute('setup', 'passive');
       }
     } else {
       sdp.addAttribute('setup', session.setup);

@@ -68,16 +68,19 @@ module.exports = function(MsrpSdk) {
                 session.localEndpoint = toUri;
             }
 
-            // Check for bodiless SEND (First intial send...)
+            // we need to assign the socket to the session
+            if (msg.method === "SEND" && !session.socket) {
+              session.socket = socket;
+              session.emit('socketConnect', session);
+
+              // Is this fromURI in our session already? If not add it
+              if (!session.getRemoteEndpoint(fromUri.uri)) {
+                  session.addRemoteEndpoint(fromUri.uri);
+              }
+            }
+
+            // Check for bodiless SEND
             if (msg.method === "SEND" && !msg.body && !msg.contentType) {
-                session.socket = socket;
-                session.emit('socketConnect', session);
-
-                // Is this fromURI in our session already? If not add it
-                if (!session.getRemoteEndpoint(fromUri.uri)) {
-                    session.addRemoteEndpoint(fromUri.uri);
-                }
-
                 sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.OK);
                 return;
             }
