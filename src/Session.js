@@ -103,7 +103,7 @@ module.exports = function(MsrpSdk) {
                 sdp.addAttribute('setup', 'passive');
             }
         } else {
-            sdp.addAttribute('setup', session.setup);
+            sdp.addAttribute('setup', 'passive');
         }
 
         session.localSdp = sdp;
@@ -151,11 +151,7 @@ module.exports = function(MsrpSdk) {
 		    if(sdp.attributes.setup.length > 0 && sdp.attributes.setup[0] === "passive") {
 		        session.weArePassive = false;
 		    }
-                } else {
-                    sdp.attributes.setup = ['passive'];
                 }
-            } else {
-                sdp.attributes.setup = ['passive'];
             }
 
             if (sdp.media[i].attributes.path) {
