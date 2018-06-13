@@ -24,8 +24,9 @@ module.exports = function(MsrpSdk) {
 
         var canSend = false;
         for (var i = this.remoteSdp.attributes.acceptTypes.length - 1; i >= 0; i--) {
-            if (this.remoteSdp.attributes.acceptTypes[i] === "text/plain" || this.remoteSdp.attributes.acceptTypes[i] === "*") {
+            if (this.remoteSdp.attributes.acceptTypes[i] === "text/plain" || this.remoteSdp.attributes.acceptTypes[i] === "*" || this.remoteSdp.attributes.acceptTypes[i] === "text/*") {
                 canSend = true;
+                break;
             }
         }
 
