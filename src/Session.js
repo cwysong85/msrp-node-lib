@@ -33,13 +33,12 @@ module.exports = function(MsrpSdk) {
         if (canSend) {
             if (!this.socket && !this.weArePassive) {
                 // we don't have a socket set up yet, create one.
-                var socket = new net.Socket();
-                session.socket = new MsrpSdk.SocketHandler(socket);
+                this.socket = new MsrpSdk.SocketHandler(new net.Socket());
             } else {
               // we don't have a socket and we are not active... did the other side send a connection?
               MsrpSdk.Logger.error('[MSRP Session] Cannot send message because there is not an active socket! Did the remote side connect? Check a=setup line in SDP media.');
-              session.emit('socketError', 'Cannot send message because there is not an active socket!', session);
-              session.emit('socketClose', true, session);
+              session.emit('socketError', 'Cannot send message because there is not an active socket!', this);
+              session.emit('socketClose', true, this);
               return;
             }
 
