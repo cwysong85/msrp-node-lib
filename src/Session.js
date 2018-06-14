@@ -104,7 +104,7 @@ module.exports = function(MsrpSdk) {
                 sdp.addAttribute('setup', 'passive');
             }
         } else {
-            sdp.addAttribute('setup', 'passive');
+            sdp.addAttribute('setup', session.setup);
         }
 
         session.localSdp = sdp;
