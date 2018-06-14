@@ -31,6 +31,18 @@ module.exports = function(MsrpSdk) {
         }
 
         if (canSend) {
+            if (!this.socket && !this.weArePassive) {
+                // we don't have a socket set up yet, create one.
+                var socket = new net.Socket();
+                session.socket = new MsrpSdk.SocketHandler(socket);
+            } else {
+              // we don't have a socket and we are not active... did the other side send a connection?
+              MsrpSdk.Logger.error('[MSRP Session] Cannot send message because there is not an active socket! Did the remote side connect? Check a=setup line in SDP media.');
+              session.emit('socketError', 'Cannot send message because there is not an active socket!', session);
+              session.emit('socketClose', true, session);
+              return;
+            }
+
             this.socket.emit('send', {
                 body: body,
                 contentType: "text/plain"
@@ -96,7 +108,7 @@ module.exports = function(MsrpSdk) {
                     sdp.addAttribute('setup', 'passive');
                 } else if (session.remoteSdp.attributes.setup[0] === 'passive') {
                     sdp.addAttribute('setup', 'active');
-		    session.weArePassive = false;
+                    session.weArePassive = false;
                 } else {
                     return onFailure('Invalid a=setup value');
                 }
@@ -111,7 +123,7 @@ module.exports = function(MsrpSdk) {
         session.localEndpoint = new MsrpSdk.URI(path);
 
         session.getHasNotRan = false;
-	onSuccess(sdp.toString());
+        onSuccess(sdp.toString());
 
         if (session.reinvite) {
             if (session.remoteSdp.attributes.setup[0] !== 'active') {
@@ -149,9 +161,9 @@ module.exports = function(MsrpSdk) {
             if (sdp.media[i].attributes) {
                 if (sdp.media[i].attributes.setup) {
                     sdp.attributes.setup = sdp.media[i].attributes.setup;
-		    if(sdp.attributes.setup.length > 0 && sdp.attributes.setup[0] === "passive") {
-		        session.weArePassive = false;
-		    }
+                    if (sdp.attributes.setup.length > 0 && sdp.attributes.setup[0] === "passive") {
+                        session.weArePassive = false;
+                    }
                 }
             }
 
@@ -193,35 +205,35 @@ module.exports = function(MsrpSdk) {
         }
 
 
-	setTimeout(function() {
-        if (!session.weArePassive) {
+        setTimeout(function() {
+            if (!session.weArePassive) {
 
-            // We are active, lets create a socket to them
-            var remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
-            var socket = new net.Socket();
-            session.socket = new MsrpSdk.SocketHandler(socket);
+                // We are active, lets create a socket to them
+                var remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
+                var socket = new net.Socket();
+                session.socket = new MsrpSdk.SocketHandler(socket);
 
-            socket.connect(remoteEndpointUri.port, remoteEndpointUri.authority, function() {
+                socket.connect(remoteEndpointUri.port, remoteEndpointUri.authority, function() {
 
-                // TODO: (LVM) Our bodiless message is different to the one the client send us.
-                // Send bodiless MSRP message
-                var request = new MsrpSdk.Message.OutgoingRequest({
-                    toPath: session.remoteEndpoints,
-                    localUri: session.localEndpoint.uri
-                }, 'SEND');
+                    // TODO: (LVM) Our bodiless message is different to the one the client send us.
+                    // Send bodiless MSRP message
+                    var request = new MsrpSdk.Message.OutgoingRequest({
+                        toPath: session.remoteEndpoints,
+                        localUri: session.localEndpoint.uri
+                    }, 'SEND');
 
-                try {
-                    socket.write(request.encode(), function() {
-                        if (cb) {
-                            cb()
-                        };
-                    });
-                } catch (e) {
-                    MsrpSdk.Logger.error(e);
-                }
-            });
-        }
-	}, 300);
+                    try {
+                        socket.write(request.encode(), function() {
+                            if (cb) {
+                                cb()
+                            };
+                        });
+                    } catch (e) {
+                        MsrpSdk.Logger.error(e);
+                    }
+                });
+            }
+        }, 300);
     };
 
     MsrpSdk.Session = Session;
