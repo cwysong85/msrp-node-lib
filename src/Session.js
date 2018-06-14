@@ -31,24 +31,36 @@ module.exports = function(MsrpSdk) {
         }
 
         if (canSend) {
-            if (!this.socket && !this.weArePassive) {
-                // we don't have a socket set up yet, create one.
-                this.socket = new MsrpSdk.SocketHandler(new net.Socket());
+            if (this.socket) {
+                this.socket.emit('send', {
+                    body: body,
+                    contentType: "text/plain"
+                }, {
+                    toPath: this.remoteEndpoints,
+                    localUri: this.localEndpoint.uri
+                }, cb);
             } else {
-              // we don't have a socket and we are not active... did the other side send a connection?
-              MsrpSdk.Logger.error('[MSRP Session] Cannot send message because there is not an active socket! Did the remote side connect? Check a=setup line in SDP media.');
-              this.emit('socketError', 'Cannot send message because there is not an active socket!', this);
-              this.emit('socketClose', true, this);
-              return;
+                if (!this.weArePassive) {
+                    // we don't have a socket set up yet, create one.
+                    this.startConnection(() => {
+                        this.socket.emit('send', {
+                            body: body,
+                            contentType: "text/plain"
+                        }, {
+                            toPath: this.remoteEndpoints,
+                            localUri: this.localEndpoint.uri
+                        }, cb);
+                    })
+
+                } else {
+                    // we don't have a socket and we are not active... did the other side send a connection?
+                    MsrpSdk.Logger.error('[MSRP Session] Cannot send message because there is not an active socket! Did the remote side connect? Check a=setup line in SDP media.');
+                    this.emit('socketError', 'Cannot send message because there is not an active socket!', this);
+                    this.emit('socketClose', true, this);
+                    return;
+                }
             }
 
-            this.socket.emit('send', {
-                body: body,
-                contentType: "text/plain"
-            }, {
-                toPath: this.remoteEndpoints,
-                localUri: this.localEndpoint.uri
-            }, cb);
         } else {
             MsrpSdk.Logger.warn('[MSRP Session] Cannot send message due to incompatible content types exchanged in SDP');
             return;
@@ -204,35 +216,35 @@ module.exports = function(MsrpSdk) {
         }
 
 
-        setTimeout(function() {
-            if (!session.weArePassive) {
+        // setTimeout(function() {
+        if (!session.weArePassive) {
 
-                // We are active, lets create a socket to them
-                var remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
-                var socket = new net.Socket();
-                session.socket = new MsrpSdk.SocketHandler(socket);
+            // We are active, lets create a socket to them
+            var remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
+            var socket = new net.Socket();
+            session.socket = new MsrpSdk.SocketHandler(socket);
 
-                socket.connect(remoteEndpointUri.port, remoteEndpointUri.authority, function() {
+            socket.connect(remoteEndpointUri.port, remoteEndpointUri.authority, function() {
 
-                    // TODO: (LVM) Our bodiless message is different to the one the client send us.
-                    // Send bodiless MSRP message
-                    var request = new MsrpSdk.Message.OutgoingRequest({
-                        toPath: session.remoteEndpoints,
-                        localUri: session.localEndpoint.uri
-                    }, 'SEND');
+                // TODO: (LVM) Our bodiless message is different to the one the client send us.
+                // Send bodiless MSRP message
+                var request = new MsrpSdk.Message.OutgoingRequest({
+                    toPath: session.remoteEndpoints,
+                    localUri: session.localEndpoint.uri
+                }, 'SEND');
 
-                    try {
-                        socket.write(request.encode(), function() {
-                            if (cb) {
-                                cb()
-                            };
-                        });
-                    } catch (e) {
-                        MsrpSdk.Logger.error(e);
-                    }
-                });
-            }
-        }, 300);
+                try {
+                    socket.write(request.encode(), function() {
+                        if (cb) {
+                            cb()
+                        };
+                    });
+                } catch (e) {
+                    MsrpSdk.Logger.error(e);
+                }
+            });
+        }
+        // }, 300);
     };
 
     MsrpSdk.Session = Session;
