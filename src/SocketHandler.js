@@ -69,14 +69,14 @@ module.exports = function(MsrpSdk) {
             }
 
             // we need to assign the socket to the session
-            if (msg.method === "SEND" && !session.socket) {
-              session.socket = socket;
-              session.emit('socketConnect', session);
+            if (!session.socket) {
+                session.socket = socket;
+                session.emit('socketConnect', session);
 
-              // Is this fromURI in our session already? If not add it
-              if (!session.getRemoteEndpoint(fromUri.uri)) {
-                  session.addRemoteEndpoint(fromUri.uri);
-              }
+                // Is this fromURI in our session already? If not add it
+                if (!session.getRemoteEndpoint(fromUri.uri)) {
+                    session.addRemoteEndpoint(fromUri.uri);
+                }
             }
 
             // Check for bodiless SEND
