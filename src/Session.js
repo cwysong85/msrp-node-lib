@@ -15,7 +15,7 @@ module.exports = function(MsrpSdk) {
         this.setup = MsrpSdk.Config.setup || 'passive';
         this.setHasNotRan = true;
         this.getHasNotRan = true;
-        this.weArePassive = true;
+        this.weArePassive = (this.setup === "passive") ? true : false;
     };
 
     util.inherits(Session, EventEmitter); // Sessions emit events in SocketHandler
