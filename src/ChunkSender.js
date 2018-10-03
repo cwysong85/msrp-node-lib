@@ -58,7 +58,8 @@ module.exports = function(MsrpSdk) {
       this.contentType = 'application/octet-stream';
     }
     this.description = description;
-    this.size = this.blob.length;
+    // this.size = this.blob.length;
+    this.size = MsrpSdk.Util.byteLength(this.blob);
     // The highest byte index sent so far
     this.sentBytes = 0;
     // The number of contiguous acked bytes

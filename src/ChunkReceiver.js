@@ -148,7 +148,8 @@ module.exports = function(MsrpSdk) {
       }
 
       this.buffer = new Buffer(array);
-      this.size = this.buffer.length;
+      // this.size = this.buffer.length;
+      this.size = MsrpSdk.Util.byteLength(this.buffer);
     }
 
     return true;
