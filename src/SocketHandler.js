@@ -35,10 +35,7 @@ module.exports = function(MsrpSdk) {
 
             socket._msrpDataBuffer = new Buffer(0);
 
-            // if response, don't worry about it
-            if (msg.status === 200) {
-                return;
-            }
+            
 
             // is this a report?
             if (msg.method === 'REPORT') {
@@ -61,6 +58,30 @@ module.exports = function(MsrpSdk) {
             // Check if the session exists and return forbidden if it doesn't
             if (!session) {
                 sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.SESSION_DOES_NOT_EXIST);
+                return;
+            }
+
+            // if this is a response to a heartbeat
+            if (msg.tid && session.heartBeatTransIds[msg.tid] != undefined){
+                MsrpSdk.Logger.debug(`MSRP heartbeat Response received ${msg.tid}`);
+                console.log(msg)
+
+               // MsrpSdk.Logger.debug(msg);
+                // is the response good? 
+                if (msg.status === 200){
+                    setTimeout(function(){
+                        session.heartBeatTransIds = {}
+                    }, 500) // (BA) timeout is a workaround, until TCC is fixed
+                } else if (msg.status >= 500) { // if not okay, close session
+                    // Should we close session, or account for other response codes? 
+                    session.emit('socketClose', true, session);
+                    return;
+                }  
+            }
+
+            // if response, don't worry about it
+            if (msg.status === 200) {
+                console.log("returning from 200")
                 return;
             }
 
@@ -87,6 +108,8 @@ module.exports = function(MsrpSdk) {
 
             var okStatus = true;
             try {
+                console.log("In try")
+                console.log(msg)
                 if (msg.byteRange.start === 1 && msg.continuationFlag === MsrpSdk.Message.Flag.end) {
                     // Non chunked message
                     session.emit('message', msg, session);
@@ -231,13 +254,20 @@ module.exports = function(MsrpSdk) {
             }
 
             var sender = new MsrpSdk.ChunkSender(routePaths, message.body, message.contentType);
+            var date = new Date
+            if (message.contentType === "text/x-msrp-heartbeat" && session.heartBeat){
+                session.heartBeatTransIds[sender.tid] = date.getTime()
+                MsrpSdk.Logger.debug(`MSRP heartbeat sent ${sender.tid}`);
+            }
+            
             activeSenders.push({
                 sender: sender,
                 socket: socket,
                 cb: cb
             });
-            chunkSenders[message.messageId] = sender;
+            chunkSenders[sender.messageId] = sender;
             sendRequests();
+
         });
 
         return socket;

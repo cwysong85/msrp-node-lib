@@ -20,7 +20,6 @@ module.exports = function(MsrpSdk) {
         return sessions[sessionId];
     };
 
-    // TODO: (LVM) Close socket here?
     SessionController.prototype.removeSession = function(sessionId) {
         delete sessions[sessionId];
     };
@@ -45,7 +44,9 @@ module.exports = function(MsrpSdk) {
             if(session) {
               try {
                 sessionController.removeSession(session.sid);
-              } catch(e) { }
+              } catch(e) { 
+                MsrpSdk.Logger.error(e)
+              }
             }
         });
 

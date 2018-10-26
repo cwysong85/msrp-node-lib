@@ -52,6 +52,7 @@ module.exports = function(MsrpSdk) {
     // 	throw new TypeError('Body has unexpected type:', body);
     // }
     this.session = session;
+    this.tid = MsrpSdk.Util.newTID();
     this.messageId = MsrpSdk.Util.newMID();
     if (this.contentType === '') {
       // We have to put something here...
@@ -78,6 +79,7 @@ module.exports = function(MsrpSdk) {
     var chunk;
     chunk = new MsrpSdk.Message.OutgoingRequest(this.session, 'SEND');
     chunk.sender = this;
+    chunk.tid = this.tid
     chunk.addHeader('message-id', this.messageId);
     chunk.addHeader('success-report', 'yes');
     chunk.addHeader('failure-report', 'yes');

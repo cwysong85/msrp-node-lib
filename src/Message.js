@@ -118,7 +118,8 @@ module.exports = function(MsrpSdk) {
     }
 
     this.initRequest();
-    this.tid = MsrpSdk.Util.newTID();
+    
+    this.tid = this.tid === null ? MsrpSdk.Util.newTID() : this.tid; 
     this.method = method;
 
     this.toPath = session.toPath;

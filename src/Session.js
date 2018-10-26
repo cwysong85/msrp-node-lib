@@ -13,6 +13,12 @@ module.exports = function(MsrpSdk) {
         this.socket = null;
         this.reinvite = false;
         this.setup = MsrpSdk.Config.setup || 'passive';
+        this.heartBeat = MsrpSdk.Config.heartBeat || true
+        this.heartBeatInterval = MsrpSdk.Config.heartBeatInterval || 5000
+        this.heartBeatTimeout = MsrpSdk.Config.heartBeatTimeout || 10000
+        this.heartBeatTransIds = {}
+        this.heartBeatPingFunc = null;
+        this.heartBeatTimeOutFunc = null; 
         this.setHasNotRan = true;
         this.getHasNotRan = true;
         this.weArePassive = (this.setup === "passive") ? true : false;
@@ -20,11 +26,11 @@ module.exports = function(MsrpSdk) {
 
     util.inherits(Session, EventEmitter); // Sessions emit events in SocketHandler
 
-    Session.prototype.sendMessage = function(body, cb) {
+    Session.prototype.sendMessage = function(body, cb, contentType) {
 
         var canSend = false;
         for (var i = this.remoteSdp.attributes.acceptTypes.length - 1; i >= 0; i--) {
-            if (this.remoteSdp.attributes.acceptTypes[i] === "text/plain" || this.remoteSdp.attributes.acceptTypes[i] === "*" || this.remoteSdp.attributes.acceptTypes[i] === "text/*") {
+            if (this.remoteSdp.attributes.acceptTypes[i] === "text/plain" || this.remoteSdp.attributes.acceptTypes[i] === "*" || this.remoteSdp.attributes.acceptTypes[i] === "text/*" || this.remoteSdp.attributes.acceptTypes[i] === "text/x-msrp-heartbeat") {
                 canSend = true;
                 break;
             }
@@ -34,7 +40,7 @@ module.exports = function(MsrpSdk) {
             if (this.socket) {
                 this.socket.emit('send', {
                     body: body,
-                    contentType: "text/plain"
+                    contentType: contentType || "text/plain"
                 }, {
                     toPath: this.remoteEndpoints,
                     localUri: this.localEndpoint.uri
@@ -45,7 +51,7 @@ module.exports = function(MsrpSdk) {
                     this.startConnection(() => {
                         this.socket.emit('send', {
                             body: body,
-                            contentType: "text/plain"
+                            contentType: contentType || "text/plain"
                         }, {
                             toPath: this.remoteEndpoints,
                             localUri: this.localEndpoint.uri
@@ -199,10 +205,44 @@ module.exports = function(MsrpSdk) {
     };
 
     Session.prototype.end = function() {
-        if (this.socket) {
-            this.socket.end();
+        var session = this
+        session.stopHeartBeat()
+        if (session.socket) {
+            session.socket.end();
         }
     };
+
+    Session.prototype.stopHeartBeat = function() {
+        var session = this
+        clearInterval(session.heartBeatPingFunc)
+        MsrpSdk.Logger.debug("Stopping MSRP Heartbeats")
+        clearInterval(session.heartBeatTimeOutFunc)
+        session.heartBeatPingFunc = null
+        session.heartBeatTimeOutFunc = null
+    };
+
+    Session.prototype.startHeartBeat = function (interval, timeOutInterval){
+        var session = this;
+        var ping = function(){
+            session.sendMessage("HEARTBEAT", function(){
+            }, "text/x-msrp-heartbeat")
+        };
+        session.heartBeatPingFunc = setInterval(ping, interval);
+        var timeOut = function(){
+            for (var key in session.heartBeatTransIds) { //loop through all heartbeats
+                if (session.heartBeatTransIds.hasOwnProperty(key)) {    //check if key has a property       
+                    var date = new Date 
+                    diff = (date.getTime() - session.heartBeatTransIds[key])  //get time difference
+                    if (diff > timeOutInterval){ //if the difference is greater than timeout
+                        session.emit('socketClose', true, session); //close socket
+                    }
+                }
+            }         
+        };
+        session.heartBeatTimeOutFunc = setInterval(timeOut, 1000); //Check for a failed heartbeat every 1 second
+    };
+
+    
 
     Session.prototype.startConnection = function(cb) {
         var session = this;
@@ -244,7 +284,9 @@ module.exports = function(MsrpSdk) {
                 }
             });
         }
-        // }, 300);
+        if (session.heartBeat) {
+            session.startHeartBeat(session.heartBeatInterval)
+        }
     };
 
     MsrpSdk.Session = Session;
