@@ -64,7 +64,6 @@ module.exports = function(MsrpSdk) {
             // if this is a response to a heartbeat
             if (msg.tid && session.heartBeatTransIds[msg.tid] != undefined){
                 MsrpSdk.Logger.debug(`MSRP heartbeat Response received ${msg.tid}`);
-                console.log(msg)
 
                // MsrpSdk.Logger.debug(msg);
                 // is the response good? 
@@ -81,7 +80,6 @@ module.exports = function(MsrpSdk) {
 
             // if response, don't worry about it
             if (msg.status === 200) {
-                console.log("returning from 200")
                 return;
             }
 
@@ -108,8 +106,6 @@ module.exports = function(MsrpSdk) {
 
             var okStatus = true;
             try {
-                console.log("In try")
-                console.log(msg)
                 if (msg.byteRange.start === 1 && msg.continuationFlag === MsrpSdk.Message.Flag.end) {
                     // Non chunked message
                     session.emit('message', msg, session);
