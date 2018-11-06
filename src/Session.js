@@ -13,12 +13,12 @@ module.exports = function(MsrpSdk) {
         this.socket = null;
         this.reinvite = false;
         this.setup = MsrpSdk.Config.setup || 'passive';
-        this.heartBeat = MsrpSdk.Config.heartBeat || true
+        this.heartBeat = (MsrpSdk.Config.heartBeat === undefined) ? true : false
         this.heartBeatInterval = MsrpSdk.Config.heartBeatInterval || 5000
         this.heartBeatTimeout = MsrpSdk.Config.heartBeatTimeout || 10000
         this.heartBeatTransIds = {}
         this.heartBeatPingFunc = null;
-        this.heartBeatTimeOutFunc = null; 
+        this.heartBeatTimeOutFunc = null;
         this.setHasNotRan = true;
         this.getHasNotRan = true;
         this.weArePassive = (this.setup === "passive") ? true : false;
@@ -221,28 +221,27 @@ module.exports = function(MsrpSdk) {
         session.heartBeatTimeOutFunc = null
     };
 
-    Session.prototype.startHeartBeat = function (interval, timeOutInterval){
+    Session.prototype.startHeartBeat = function(interval, timeOutInterval) {
         var session = this;
-        var ping = function(){
-            session.sendMessage("HEARTBEAT", function(){
-            }, "text/x-msrp-heartbeat")
+        var ping = function() {
+            session.sendMessage("HEARTBEAT", function() {}, "text/x-msrp-heartbeat")
         };
         session.heartBeatPingFunc = setInterval(ping, interval);
-        var timeOut = function(){
+        var timeOut = function() {
             for (var key in session.heartBeatTransIds) { //loop through all heartbeats
-                if (session.heartBeatTransIds.hasOwnProperty(key)) {    //check if key has a property       
-                    var date = new Date 
-                    diff = (date.getTime() - session.heartBeatTransIds[key])  //get time difference
-                    if (diff > timeOutInterval){ //if the difference is greater than timeout
+                if (session.heartBeatTransIds.hasOwnProperty(key)) { //check if key has a property
+                    var date = new Date
+                    diff = (date.getTime() - session.heartBeatTransIds[key]) //get time difference
+                    if (diff > timeOutInterval) { //if the difference is greater than timeout
                         session.emit('socketClose', true, session); //close socket
                     }
                 }
-            }         
+            }
         };
         session.heartBeatTimeOutFunc = setInterval(timeOut, 1000); //Check for a failed heartbeat every 1 second
     };
 
-    
+
 
     Session.prototype.startConnection = function(cb) {
         var session = this;
@@ -258,6 +257,13 @@ module.exports = function(MsrpSdk) {
 
         // setTimeout(function() {
         if (!session.weArePassive) {
+
+            // are we talking to ourselves???
+            // do a quick check to see if we are trying to connect to ourself.
+            if (session.remoteEndpoints[0] === session.localEndpoint) {
+                MsrpSdk.Logger.warn("Not creating a new TCP connection for session because we would be talking to ourself. Returing...");
+                return;
+            }
 
             // We are active, lets create a socket to them
             var remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
@@ -282,10 +288,11 @@ module.exports = function(MsrpSdk) {
                 } catch (e) {
                     MsrpSdk.Logger.error(e);
                 }
+
+                if (session.heartBeat) {
+                    session.startHeartBeat(session.heartBeatInterval)
+                }
             });
-        }
-        if (session.heartBeat) {
-            session.startHeartBeat(session.heartBeatInterval)
         }
     };
 

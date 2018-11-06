@@ -33,9 +33,11 @@ module.exports = function(MsrpSdk) {
                 return;
             }
 
+            // are the toPath and fromPath the same? We need to drop this data if so...
+            if (msg.toPath[0] === msg.fromPath[0]) return
+
             socket._msrpDataBuffer = new Buffer(0);
 
-            
 
             // is this a report?
             if (msg.method === 'REPORT') {
@@ -61,22 +63,27 @@ module.exports = function(MsrpSdk) {
                 return;
             }
 
+            // have we started heart beats yet and is this a passive session?
+            if (session.weArePassive && session.heartBeat) {
+                session.startHeartBeat(session.heartBeatInterval)
+            }
+
             // if this is a response to a heartbeat
-            if (msg.tid && session.heartBeatTransIds[msg.tid] != undefined){
+            if (msg.tid && session.heartBeatTransIds[msg.tid] != undefined) {
                 MsrpSdk.Logger.debug(`MSRP heartbeat Response received ${msg.tid}`);
                 console.log(msg)
 
-               // MsrpSdk.Logger.debug(msg);
-                // is the response good? 
-                if (msg.status === 200){
-                    setTimeout(function(){
+                // MsrpSdk.Logger.debug(msg);
+                // is the response good?
+                if (msg.status === 200) {
+                    setTimeout(function() {
                         session.heartBeatTransIds = {}
                     }, 500) // (BA) timeout is a workaround, until TCC is fixed
                 } else if (msg.status >= 500) { // if not okay, close session
-                    // Should we close session, or account for other response codes? 
+                    // Should we close session, or account for other response codes?
                     session.emit('socketClose', true, session);
                     return;
-                }  
+                }
             }
 
             // if response, don't worry about it
@@ -255,11 +262,11 @@ module.exports = function(MsrpSdk) {
 
             var sender = new MsrpSdk.ChunkSender(routePaths, message.body, message.contentType);
             var date = new Date
-            if (message.contentType === "text/x-msrp-heartbeat" && session.heartBeat){
+            if (message.contentType === "text/x-msrp-heartbeat" && session.heartBeat) {
                 session.heartBeatTransIds[sender.tid] = date.getTime()
                 MsrpSdk.Logger.debug(`MSRP heartbeat sent ${sender.tid}`);
             }
-            
+
             activeSenders.push({
                 sender: sender,
                 socket: socket,
