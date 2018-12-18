@@ -13,10 +13,10 @@ module.exports = function(MsrpSdk) {
         this.socket = null;
         this.reinvite = false;
         this.setup = MsrpSdk.Config.setup || 'passive';
-        this.heartBeat = (MsrpSdk.Config.heartBeat === undefined) ? true : false
-        this.heartBeatInterval = MsrpSdk.Config.heartBeatInterval || 5000
-        this.heartBeatTimeout = MsrpSdk.Config.heartBeatTimeout || 10000
-        this.heartBeatTransIds = {}
+        this.heartBeat = (MsrpSdk.Config.heartBeat !== false) ? true : false;
+        this.heartBeatInterval = MsrpSdk.Config.heartBeatInterval || 5000;
+        this.heartBeatTimeout = MsrpSdk.Config.heartBeatTimeout || 10000;
+        this.heartBeatTransIds = {};
         this.heartBeatPingFunc = null;
         this.heartBeatTimeOutFunc = null;
         this.setHasNotRan = true;
