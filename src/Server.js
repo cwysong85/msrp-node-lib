@@ -19,18 +19,13 @@ module.exports = function(MsrpSdk) {
         this.sessions = {};
 
         this.server = net.createServer(function(socket) {
-            // TODO: INBOUND -  Remove next line
-            MsrpSdk.Logger.warn('CALLING SOCKET HANDLER FROM SERVER');
-
-            // TODO: INBOUND - Review this
             socket = new MsrpSdk.SocketHandler(socket);
         });
     };
 
-    // TODO: Is Server emitting something now?
     util.inherits(Server, EventEmitter);
 
-    Server.prototype.start = function(done) {
+    Server.prototype.start = function(callback) {
         var server = this;
         this.server.listen(config.port, config.host, function() {
             var serv = server.server.address();
@@ -39,13 +34,13 @@ module.exports = function(MsrpSdk) {
                 MsrpSdk.Logger.info('MSRP tracing enabled');
             }
 
-            if (done) {
-                done();
+            if (callback) {
+                callback();
             }
         }).on('error', function(error) {
             MsrpSdk.Logger.warn(error);
-            if (done) {
-                done(error);
+            if (callback) {
+                callback(error);
             }
         });
     };
