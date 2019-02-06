@@ -143,18 +143,15 @@ module.exports = function(MsrpSdk) {
         onSuccess(sdp.toString());
 
         if (session.reinvite) {
-            if (session.remoteSdp.attributes.setup) {
-                if (session.remoteSdp.attributes.setup[0] !== 'active') {
-                    sdp.addAttribute('setup', 'active');
-                    session.startConnection(function() {
-                        // MsrpSdk.Logger.info('REINVITING');
-                        session.emit('reinvite', session);
-                        session.reinvite = false;
-                    });
-                } else {
+            if (session.remoteSdp.attributes.setup && session.remoteSdp.attributes.setup[0] !== 'active') {
+                sdp.addAttribute('setup', 'active');
+                session.startConnection(function() {
                     session.emit('reinvite', session);
                     session.reinvite = false;
-                }
+                });
+            } else {
+                session.emit('reinvite', session);
+                session.reinvite = false;
             }
         } else {
             session.startConnection();
