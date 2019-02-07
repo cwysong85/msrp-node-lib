@@ -55,7 +55,6 @@ module.exports = function(MsrpSdk) {
               localUri: this.localEndpoint.uri
             }, cb);
           })
-
         } else {
           // we don't have a socket and we are not active... did the other side send a connection?
           MsrpSdk.Logger.error('[MSRP Session] Cannot send message because there is not an active socket! Did the remote side connect? Check a=setup line in SDP media.');
