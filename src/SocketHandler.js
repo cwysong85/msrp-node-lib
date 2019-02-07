@@ -98,6 +98,7 @@ module.exports = function(MsrpSdk) {
             if (!session.socket) {
                 session.socket = socket;
                 session.emit('socketConnect', session);
+                session.sentSocketConnect = true;
 
                 // Is this fromURI in our session already? If not add it
                 if (!session.getRemoteEndpoint(fromUri.uri)) {
@@ -108,6 +109,12 @@ module.exports = function(MsrpSdk) {
             // Check for bodiless SEND
             if (msg.method === "SEND" && !msg.body && !msg.contentType) {
                 sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.OK);
+
+                if (!session.sentSocketConnect) {
+                    session.emit('socketConnect', session);
+                    session.sentSocketConnect = true;
+                }
+
                 return;
             }
 
