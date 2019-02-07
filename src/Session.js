@@ -30,7 +30,7 @@ module.exports = function(MsrpSdk) {
 
     // See if we can send this content type to the remote client
     var ct = contentType || "text/plain";
-    var canSend = this.remoteSdp.attributes.acceptTypes.split(' ').some(function(acceptType) {
+    var canSend = this.remoteSdp.attributes.acceptTypes[0].split(' ').some(function(acceptType) {
       return (acceptType === ct || acceptType === '*');
     });
 
