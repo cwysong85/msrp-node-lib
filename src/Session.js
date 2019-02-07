@@ -28,19 +28,17 @@ module.exports = function(MsrpSdk) {
 
   Session.prototype.sendMessage = function(body, cb, contentType) {
 
-    var canSend = false;
-    for (var i = this.remoteSdp.attributes.acceptTypes.length - 1; i >= 0; i--) {
-      if (this.remoteSdp.attributes.acceptTypes[i] === "text/plain" || this.remoteSdp.attributes.acceptTypes[i] === "*" || this.remoteSdp.attributes.acceptTypes[i] === "text/*" || this.remoteSdp.attributes.acceptTypes[i] === "text/x-msrp-heartbeat") {
-        canSend = true;
-        break;
-      }
-    }
+    // See if we can send this content type to the remote client
+    var ct = contentType || "text/plain";
+    var canSend = this.remoteSdp.attributes.acceptTypes.split(' ').some(function(acceptType) {
+      return (acceptType === ct || acceptType === '*');
+    });
 
-    if (canSend) {
+    if(canSend) {
       if (this.socket) {
         this.socket.emit('send', {
           body: body,
-          contentType: contentType || "text/plain"
+          contentType: ct
         }, {
           toPath: this.remoteEndpoints,
           localUri: this.localEndpoint.uri
@@ -51,7 +49,7 @@ module.exports = function(MsrpSdk) {
           this.startConnection(() => {
             this.socket.emit('send', {
               body: body,
-              contentType: contentType || "text/plain"
+              contentType: ct
             }, {
               toPath: this.remoteEndpoints,
               localUri: this.localEndpoint.uri
