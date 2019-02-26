@@ -12,15 +12,33 @@ module.exports = function(MsrpSdk) {
     SessionController.prototype.createSession = function() {
         var session = new MsrpSdk.Session();
         this.forwardEvents(session);
+
+        // TODO: (LVM55)
+        MsrpSdk.Logger.info('---> SESSION CREATED:', session.sid);
+
         sessions[session.sid] = session;
         return session;
     };
 
     SessionController.prototype.getSession = function(sessionId) {
+
+      // TODO: (LVM55)
+      MsrpSdk.Logger.info('---> THIS IS SESSION:', sessionId);
+
         return sessions[sessionId];
     };
 
     SessionController.prototype.removeSession = function(sessionId) {
+
+        // TODO: (LVM11) REVIEW
+        // MsrpSdk.Session.stopHeartBeat();
+        // or
+        // MsrpSdk.Session.end();
+        // ?
+
+        // TODO: (LVM55)
+        MsrpSdk.Logger.info('---> REMOVING SESSION:', sessionId);
+
         delete sessions[sessionId];
     };
 
@@ -44,8 +62,8 @@ module.exports = function(MsrpSdk) {
             if(session) {
               try {
                 sessionController.removeSession(session.sid);
-              } catch(e) { 
-                MsrpSdk.Logger.error(e)
+              } catch(e) {
+                MsrpSdk.Logger.error(e);
               }
             }
         });

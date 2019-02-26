@@ -14,12 +14,23 @@ module.exports = function(MsrpSdk) {
         var socketHandler = this;
         var session; // Stores the session for the current socket
 
+        // TODO: (LVM55) REMOVE TRACES
+        MsrpSdk.Logger.info('---> INBOUND SOCKET CONNECTED');
+        MsrpSdk.Logger.info('---> SOCKET:', socket);
+        MsrpSdk.Logger.info('---> LOCAL SOCKET: %s:%s', socket.localAddress, socket.localPort);
+        MsrpSdk.Logger.info('---> REMOTE SOCKET: %s:%s', socket.remoteAddress, socket.remotePort);
+
         socket._msrpDataBuffer = new Buffer(0);
 
         socket.on('data', function(data) {
 
+            // TODO: (LVM4) REMOVE TRACES
+            MsrpSdk.Logger.info('---> Data on local port:', socket.localPort);
+
             // Send to tracing function
             traceMsrp(data);
+
+            var isHeartBeatMessage = false;
 
             if (socket._msrpDataBuffer.length !== 0) {
                 socket._msrpDataBuffer = Buffer.concat([socket._msrpDataBuffer, new Buffer(data)]);
@@ -31,6 +42,10 @@ module.exports = function(MsrpSdk) {
             var msg = MsrpSdk.parseMessage(socket._msrpDataBuffer.toString());
             if (!msg) {
                 return;
+            }
+
+            if(msg.contentType === 'text/x-msrp-heartbeat') {
+              isHeartBeatMessage = true;
             }
 
             // are the toPath and fromPath the same? We need to drop this data if so...
@@ -55,17 +70,29 @@ module.exports = function(MsrpSdk) {
                 return;
             }
 
+            // TODO: (LVM55) Fixed by Corey
+            // session = MsrpSdk.SessionController.getSession(toUri.sessionId);
+            //
+            // // Check if the session exists and return forbidden if it doesn't
+            // if (!session) {
+            //     sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.SESSION_DOES_NOT_EXIST);
+            //     return;
+            // }
+
             session = MsrpSdk.SessionController.getSession(toUri.sessionId);
 
             // Check if the session exists and return forbidden if it doesn't
             if (!session) {
-                sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.SESSION_DOES_NOT_EXIST);
+                // if the message we received had a status of 481 plus we don't have a session, do not send this packet because of DOS potential
+                if (msg.status != 481) {
+                    sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.SESSION_DOES_NOT_EXIST);
+                }
                 return;
             }
 
             // have we started heart beats yet and is this a passive session?
             if (session.weArePassive && session.heartBeat) {
-                session.startHeartBeat(session.heartBeatInterval)
+                session.startHeartBeat(session.heartBeatInterval);
             }
 
             // if this is a response to a heartbeat
@@ -76,8 +103,8 @@ module.exports = function(MsrpSdk) {
                 // is the response good?
                 if (msg.status === 200) {
                     setTimeout(function() {
-                        session.heartBeatTransIds = {}
-                    }, 500) // (BA) timeout is a workaround, until TCC is fixed
+                        session.heartBeatTransIds = {};
+                    }, 500); // (BA) timeout is a workaround, until TCC is fixed
                 } else if (msg.status >= 500) { // if not okay, close session
                     // Should we close session, or account for other response codes?
                     session.emit('socketClose', true, session);
@@ -98,6 +125,7 @@ module.exports = function(MsrpSdk) {
             if (!session.socket) {
                 session.socket = socket;
                 session.emit('socketConnect', session);
+                session.sentSocketConnect = true;
 
                 // Is this fromURI in our session already? If not add it
                 if (!session.getRemoteEndpoint(fromUri.uri)) {
@@ -105,17 +133,55 @@ module.exports = function(MsrpSdk) {
                 }
             }
 
+            // TODO: (LVM55) NOT SURE IF THIS IS PROPER
+            MsrpSdk.Logger.debug('---> SH TO URI: %s:%s', toUri.authority, toUri.port);
+            MsrpSdk.Logger.debug('---> SH LOCAL SOCKET: %s:%s', socket.localAddress, socket.localPort);
+            MsrpSdk.Logger.debug('---> SH SESSION LOCAL SOCKET: %s:%s', session.socket.localAddress, session.socket.localPort);
+            MsrpSdk.Logger.debug('---> SH SESSION LOCAL ENDPOINT:', session.localEndpoint);
+            MsrpSdk.Logger.debug('---> SH FROM URI: %s:%s', fromUri.authority, fromUri.port);
+            MsrpSdk.Logger.debug('---> SH REMOTE SOCKET: %s:%s', socket.remoteAddress, socket.remotePort);
+            MsrpSdk.Logger.debug('---> SH SESSION REMOTE SOCKET: %s:%s', session.socket.remoteAddress, session.socket.remotePort);
+            MsrpSdk.Logger.debug('---> SH SESSION REMOTE ENDPOINTS:', session.remoteEndpoints);
+            // TODO: (LVM55)
+            if((socket.remoteAddress + ':' + socket.remotePort) !== (session.socket.remoteAddress + ':' + session.socket.remotePort)){
+                MsrpSdk.Logger.debug('---> THIS IS PROBABLY A REINVITE');
+                // TODO: (LVM55) WE WILL NEED TO CLOSE THE OLD SOCKET
+                // TODO: (LVM55) BUT WE MAY NEED TO DETACH THE SESSION EVENTS FIRST
+                // TODO: (LVM55) CONTINU HERE. DOING THIS MAKES TEXTY FAIL. ?
+                MsrpSdk.Logger.debug('---> REMOVE OLD SOCKET LISTENERS');
+                removeSocketListeners(session.socket);
+                MsrpSdk.Logger.debug('---> END OLD SOCKET');
+                session.socket.end();
+                MsrpSdk.Logger.debug('---> REPLACE SOCKET');
+                session.socket = socket;
+            }
+
             // Check for bodiless SEND
             if (msg.method === "SEND" && !msg.body && !msg.contentType) {
                 sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.OK);
+
+                if (!session.sentSocketConnect) {
+                    session.emit('socketConnect', session);
+                    session.sentSocketConnect = true;
+                }
+
                 return;
             }
 
             var okStatus = true;
             try {
+
+                // TODO: (LVM44) Debugging
+                MsrpSdk.Logger.debug('---> Message:', msg);
+
                 if (msg.byteRange.start === 1 && msg.continuationFlag === MsrpSdk.Message.Flag.end) {
                     // Non chunked message
+                    // TODO: (LVM11) Changed
+                    // TODO: (LVM11) Restore heartbeats logic
                     session.emit('message', msg, session);
+                    // if (!isHeartBeatMessage) {
+                    //     session.emit('message', msg, session);
+                    // }
                 } else {
                     // Chunk of a multiple-chunk message
                     var msgId = msg.messageId,
@@ -187,11 +253,16 @@ module.exports = function(MsrpSdk) {
 
                             msg.body = buffer.toString('utf-8');
 
+                            // TODO: (LVM11) Changed
+                            // TODO: (LVM11) Restore heartbeats logic
                             session.emit('message', msg);
+                            // if (!isHeartBeatMessage) {
+                            //     session.emit('message', msg);
+                            // }
 
                         } else {
                             // Receive ongoing
-                            MsrpSdk.Logger.info('Receiving additional chunks for MsgId: ' + msgId + ', bytesReceived: ' + chunkReceivers[msgId].receivedBytes);
+                            MsrpSdk.Logger.debug('Receiving additional chunks for MsgId: ' + msgId + ', bytesReceived: ' + chunkReceivers[msgId].receivedBytes);
                         }
                     }
                 }
@@ -216,7 +287,12 @@ module.exports = function(MsrpSdk) {
         });
 
         socket.on('connect', function() {
-            MsrpSdk.Logger.info('Socket connect');
+            MsrpSdk.Logger.debug('Socket connect');
+
+            // TODO: (LVM4) REMOVE TRACES
+            MsrpSdk.Logger.info('---> Connect on local port:', socket.localPort);
+
+            // TODO: (LVM11) Think what to do with this
             // TODO: This listener should emit the 'socketConnect' event.
             // The other 'socketConnect' event emitted by the SocketHandler is actually
             // something like a 'bodylessMessageReceived' event.
@@ -224,6 +300,10 @@ module.exports = function(MsrpSdk) {
         });
 
         socket.on('timeout', function() {
+
+            // TODO: (LVM4) REMOVE TRACES
+            MsrpSdk.Logger.info('---> Timeout on local port:', socket.localPort);
+
             MsrpSdk.Logger.warn('Socket timeout');
             if (session) {
                 session.emit('socketTimeout', session);
@@ -231,33 +311,52 @@ module.exports = function(MsrpSdk) {
         });
 
         socket.on('error', function(error) {
-            MsrpSdk.Logger.warn('Socket error');
+
+            // TODO: (LVM4) REMOVE TRACES
+            MsrpSdk.Logger.info('---> Error on local port:', socket.localPort);
+
+            MsrpSdk.Logger.error('Socket error:', error);
             if (session) {
                 session.emit('socketError', error, session);
             }
         });
 
         socket.on('close', function(hadError) {
-            MsrpSdk.Logger.warn('Socket close');
+
+            // TODO: (LVM4) REMOVE TRACES
+            MsrpSdk.Logger.info('---> Close on local port:', socket.localPort);
+
+            MsrpSdk.Logger.debug('Socket close');
             if (session) {
                 session.emit('socketClose', hadError, session);
             }
         });
 
         socket.on('end', function() {
-            MsrpSdk.Logger.info('Socket ended');
+
+            // TODO: (LVM4) REMOVE TRACES
+            MsrpSdk.Logger.info('---> End on local port:', socket.localPort);
+
+            MsrpSdk.Logger.debug('Socket ended');
             if (session) {
                 session.emit('socketEnd', session);
             }
         });
 
         socket.on('send', function(message, routePaths, cb) {
+
+            // TODO: (LVM4) REMOVE TRACES
+            MsrpSdk.Logger.info('---> Send on local port:', socket.localPort);
+            MsrpSdk.Logger.info('---> Send on remote port:', socket.remotePort);
+            MsrpSdk.Logger.info('---> session:', session);
+
             if (!message || !routePaths) {
                 return;
             }
 
             var sender = new MsrpSdk.ChunkSender(routePaths, message.body, message.contentType);
             var date = new Date
+            // TODO: (LVM11) If session doesn't exist, the next line breaks the process
             if (message.contentType === "text/x-msrp-heartbeat" && session.heartBeat) {
                 session.heartBeatTransIds[sender.tid] = date.getTime()
                 MsrpSdk.Logger.debug(`MSRP heartbeat sent ${sender.tid}`);
@@ -320,14 +419,14 @@ module.exports = function(MsrpSdk) {
 
         msgId = report.messageId;
         if (!msgId) {
-            MsrpSdk.Logger.info('Invalid REPORT: no message id');
+            MsrpSdk.Logger.error('Invalid REPORT: no message id');
             return;
         }
 
         // Check whether this is for a chunk sender first
         sender = chunkSenders[msgId];
         if (!sender) {
-            MsrpSdk.Logger.info('Invalid REPORT: unknown message id');
+            MsrpSdk.Logger.error('Invalid REPORT: unknown message id');
             // Silently ignore, as suggested in 4975 section 7.1.2
             return;
         }
@@ -413,7 +512,7 @@ module.exports = function(MsrpSdk) {
             }
 
             if (end !== req.byteRange.end) {
-                MsrpSdk.Logger.warn('Report Byte-Range end does not match request');
+                MsrpSdk.Logger.error('Report Byte-Range end does not match request');
             }
 
             report.byteRange = {
@@ -427,6 +526,17 @@ module.exports = function(MsrpSdk) {
         socket.write(encodeMsg);
         traceMsrp(encodeMsg);
     };
+
+    // TODO: (LVM55)
+    function removeSocketListeners(socket) {
+      socket.removeAllListeners('data');
+      socket.removeAllListeners('connect');
+      socket.removeAllListeners('timeout');
+      socket.removeAllListeners('error');
+      socket.removeAllListeners('close');
+      socket.removeAllListeners('end');
+      socket.removeAllListeners('send');
+    }
 
     MsrpSdk.SocketHandler = SocketHandler;
 };
