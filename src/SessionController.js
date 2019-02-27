@@ -1,50 +1,57 @@
+// Dependencies
 var util = require('util');
 var EventEmitter = require('events').EventEmitter;
 
 module.exports = function(MsrpSdk) {
+    // Private variables
+    var sessions = {}; // Sessions dictionary by session ID
 
+    /**
+     * Session controller
+     */
     var SessionController = function() {};
-
     util.inherits(SessionController, EventEmitter);
 
-    var sessions = {}; // Private sessions dictionary by id
-
+    /**
+     * Creates a session
+     * @return {Session} Session
+     */
     SessionController.prototype.createSession = function() {
+        var sessionController = this;
         var session = new MsrpSdk.Session();
-        this.forwardEvents(session);
-
-        // TODO: (LVM55)
-        MsrpSdk.Logger.info('---> SESSION CREATED:', session.sid);
-
+        forwardSessionEvents(session, sessionController);
         sessions[session.sid] = session;
         return session;
     };
 
+    /**
+     * Gets a session by session ID
+     * @param  {String} sessionId Session ID
+     * @return {Session}          Session
+     */
     SessionController.prototype.getSession = function(sessionId) {
-
-      // TODO: (LVM55)
-      MsrpSdk.Logger.info('---> THIS IS SESSION:', sessionId);
-
         return sessions[sessionId];
     };
 
+    /**
+     * Removes a session by session ID
+     * @param  {String} sessionId Session ID
+     */
     SessionController.prototype.removeSession = function(sessionId) {
-
-        // TODO: (LVM11) REVIEW
-        // MsrpSdk.Session.stopHeartBeat();
-        // or
-        // MsrpSdk.Session.end();
-        // ?
-
-        // TODO: (LVM55)
-        MsrpSdk.Logger.info('---> REMOVING SESSION:', sessionId);
-
-        delete sessions[sessionId];
+        var sessionController = this;
+        var session = sessionController.getSession(sessionId);
+        if (session) {
+          session.end();
+          delete sessions[sessionId];
+        }
     };
 
-    SessionController.prototype.forwardEvents = function(session) {
-        var sessionController = this;
-
+    /**
+     * Helper function for forwarding a session's events to the session controller
+     * @param  {Session} session Session
+     * @param  {SessionController} sessionController Session controller
+     */
+    function forwardSessionEvents(session, sessionController) {
         session.on('message', function(msg, session) {
             sessionController.emit('message', msg, session);
         });
@@ -58,14 +65,8 @@ module.exports = function(MsrpSdk) {
         });
 
         session.on('socketClose', function(hadError, session) {
+            sessionController.removeSession(session.sid);
             sessionController.emit('socketClose', hadError, session);
-            if(session) {
-              try {
-                sessionController.removeSession(session.sid);
-              } catch(e) {
-                MsrpSdk.Logger.error(e);
-              }
-            }
         });
 
         session.on('socketConnect', function(session) {
@@ -73,32 +74,20 @@ module.exports = function(MsrpSdk) {
         });
 
         session.on('socketEnd', function(session) {
+            sessionController.removeSession(session.sid);
             sessionController.emit('socketEnd', session);
-            if(session) {
-              try {
-                sessionController.removeSession(session.sid);
-              } catch(e) { }
-            }
         });
 
         session.on('socketError', function(error, session) {
+            sessionController.removeSession(session.sid);
             sessionController.emit('socketError', error, session);
-            if(session) {
-              try {
-                sessionController.removeSession(session.sid);
-              } catch(e) { }
-            }
         });
 
         session.on('socketTimeout', function(session) {
+            sessionController.removeSession(session.sid);
             sessionController.emit('socketTimeout', session);
-            if(session) {
-              try {
-                sessionController.removeSession(session.sid);
-              } catch(e) { }
-            }
         });
-    };
+    }
 
     MsrpSdk.SessionController = new SessionController();
 };
