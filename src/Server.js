@@ -1,44 +1,37 @@
+// Dependencies
 var net = require('net');
 var util = require('util');
 var EventEmitter = require('events').EventEmitter;
 
 module.exports = function(MsrpSdk) {
-  var msrpTracingEnabled = false;
-  var config = MsrpSdk.Config;
-
   /**
    * MSRP server
-   * @param  {object} config Holds the MSRP Server configuation
-   * @return {object}        The MSRP Server object
+   * @property server MSRP server
    */
   var Server = function() {
-    var server = this;
-    server.config = config;
-    msrpTracingEnabled = config.traceMsrp;
-
-    this.sessions = {};
-
     this.server = net.createServer(function(socket) {
-      socket = new MsrpSdk.SocketHandler(socket);
+      new MsrpSdk.SocketHandler(socket);
     });
   };
-
   util.inherits(Server, EventEmitter);
 
+  /**
+   * Starts the MSRP server
+   * @param  {Function} callback Callback function
+   */
   Server.prototype.start = function(callback) {
     var server = this;
-    this.server.listen(config.port, config.host, function() {
-      var serv = server.server.address();
-      MsrpSdk.Logger.info('MSRP TCP server listening on ' + serv.address + ':' + serv.port);
-      if (msrpTracingEnabled) {
-        MsrpSdk.Logger.info('MSRP tracing enabled');
+    server.server.listen(MsrpSdk.Config.port, MsrpSdk.Config.host, function() {
+      var serverAddress = server.server.address();
+      MsrpSdk.Logger.info('[MSRP Server] MSRP TCP server listening on %s:%s', serverAddress.address, serverAddress.port);
+      if (MsrpSdk.Config.traceMsrp) {
+        MsrpSdk.Logger.info('[MSRP Server] MSRP tracing enabled');
       }
-
       if (callback) {
         callback();
       }
     }).on('error', function(error) {
-      MsrpSdk.Logger.warn(error);
+      MsrpSdk.Logger.error(error);
       if (callback) {
         callback(error);
       }
