@@ -1,86 +1,93 @@
+// Dependencies
 var util = require('util');
 var EventEmitter = require('events').EventEmitter;
 
 module.exports = function(MsrpSdk) {
+  // Private variables
+  var sessions = {}; // Sessions dictionary by session ID
 
-    var SessionController = function() {};
+  /**
+   * Session controller
+   */
+  var SessionController = function() {};
+  util.inherits(SessionController, EventEmitter);
 
-    util.inherits(SessionController, EventEmitter);
+  /**
+   * Creates a session
+   * @return {Session} Session
+   */
+  SessionController.prototype.createSession = function() {
+    var sessionController = this;
+    var session = new MsrpSdk.Session();
+    forwardSessionEvents(session, sessionController);
+    sessions[session.sid] = session;
+    return session;
+  };
 
-    var sessions = {}; // Private sessions dictionary by id
+  /**
+   * Gets a session by session ID
+   * @param  {String} sessionId Session ID
+   * @return {Session}          Session
+   */
+  SessionController.prototype.getSession = function(sessionId) {
+    return sessions[sessionId];
+  };
 
-    SessionController.prototype.createSession = function() {
-        var session = new MsrpSdk.Session();
-        this.forwardEvents(session);
-        sessions[session.sid] = session;
-        return session;
-    };
+  /**
+   * Removes a session by session ID
+   * @param  {String} sessionId Session ID
+   */
+  SessionController.prototype.removeSession = function(sessionId) {
+    var sessionController = this;
+    var session = sessionController.getSession(sessionId);
+    if (session) {
+      session.end();
+      delete sessions[sessionId];
+    }
+  };
 
-    SessionController.prototype.getSession = function(sessionId) {
-        return sessions[sessionId];
-    };
+  /**
+   * Helper function for forwarding a session's events to the session controller
+   * @param  {Session} session Session
+   * @param  {SessionController} sessionController Session controller
+   */
+  function forwardSessionEvents(session, sessionController) {
+    session.on('message', function(msg, session) {
+      sessionController.emit('message', msg, session);
+    });
 
-    SessionController.prototype.removeSession = function(sessionId) {
-        delete sessions[sessionId];
-    };
+    session.on('response', function(msg, session) {
+      sessionController.emit('response', msg, session);
+    });
 
-    SessionController.prototype.forwardEvents = function(session) {
-        var sessionController = this;
+    session.on('reinvite', function(session) {
+      sessionController.emit('reinvite', session);
+    });
 
-        session.on('message', function(msg, session) {
-            sessionController.emit('message', msg, session);
-        });
+    session.on('socketClose', function(hadError, session) {
+      sessionController.removeSession(session.sid);
+      sessionController.emit('socketClose', hadError, session);
+    });
 
-        session.on('response', function(msg, session) {
-            sessionController.emit('response', msg, session);
-        });
+    session.on('socketConnect', function(session) {
+      sessionController.emit('socketConnect', session);
+    });
 
-        session.on('reinvite', function(session) {
-            sessionController.emit('reinvite', session);
-        });
+    session.on('socketEnd', function(session) {
+      sessionController.removeSession(session.sid);
+      sessionController.emit('socketEnd', session);
+    });
 
-        session.on('socketClose', function(hadError, session) {
-            sessionController.emit('socketClose', hadError, session);
-            if(session) {
-              try {
-                sessionController.removeSession(session.sid);
-              } catch(e) { 
-                MsrpSdk.Logger.error(e)
-              }
-            }
-        });
+    session.on('socketError', function(error, session) {
+      sessionController.removeSession(session.sid);
+      sessionController.emit('socketError', error, session);
+    });
 
-        session.on('socketConnect', function(session) {
-            sessionController.emit('socketConnect', session);
-        });
+    session.on('socketTimeout', function(session) {
+      sessionController.removeSession(session.sid);
+      sessionController.emit('socketTimeout', session);
+    });
+  }
 
-        session.on('socketEnd', function(session) {
-            sessionController.emit('socketEnd', session);
-            if(session) {
-              try {
-                sessionController.removeSession(session.sid);
-              } catch(e) { }
-            }
-        });
-
-        session.on('socketError', function(error, session) {
-            sessionController.emit('socketError', error, session);
-            if(session) {
-              try {
-                sessionController.removeSession(session.sid);
-              } catch(e) { }
-            }
-        });
-
-        session.on('socketTimeout', function(session) {
-            sessionController.emit('socketTimeout', session);
-            if(session) {
-              try {
-                sessionController.removeSession(session.sid);
-              } catch(e) { }
-            }
-        });
-    };
-
-    MsrpSdk.SessionController = new SessionController();
+  MsrpSdk.SessionController = new SessionController();
 };
