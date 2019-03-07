@@ -44,7 +44,7 @@ module.exports = function(config, logger) {
     // TODO:
     // NOTE: There is a circular dependency
     // SessionController depends on Session.
-    // Session depends on SocketHandler.
+    // Session depends on SocketHandler and SessionController.
     // SocketHandler depends on SessionController.
 
     return MsrpSdk;
