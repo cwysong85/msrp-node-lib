@@ -3,13 +3,13 @@ var util = require('util');
 var EventEmitter = require('events').EventEmitter;
 
 module.exports = function(MsrpSdk) {
-  // Private variables
-  var sessions = {}; // Sessions dictionary by session ID
 
   /**
    * Session controller
    */
-  var SessionController = function() {};
+  var SessionController = function() {
+    this.sessions = []; // Sessions array
+  };
   util.inherits(SessionController, EventEmitter);
 
   /**
@@ -20,7 +20,7 @@ module.exports = function(MsrpSdk) {
     var sessionController = this;
     var session = new MsrpSdk.Session();
     forwardSessionEvents(session, sessionController);
-    sessions[session.sid] = session;
+    sessionController.sessions.push(session);
     return session;
   };
 
@@ -30,19 +30,20 @@ module.exports = function(MsrpSdk) {
    * @return {Session}          Session
    */
   SessionController.prototype.getSession = function(sessionId) {
-    return sessions[sessionId];
+    var sessionController = this;
+    return sessionController.sessions.find(function(session) {
+      return session.sid === sessionId;
+    });
   };
 
   /**
-   * Removes a session by session ID
-   * @param  {String} sessionId Session ID
+   * Removes a session
+   * @param  {Session} session Session
    */
-  SessionController.prototype.removeSession = function(sessionId) {
+  SessionController.prototype.removeSession = function(session) {
     var sessionController = this;
-    var session = sessionController.getSession(sessionId);
-    if (session) {
-      session.end();
-      delete sessions[sessionId];
+    if (sessionController.sessions.includes(session)) {
+      sessionController.sessions.splice(sessionController.sessions.indexOf(session), 1);
     }
   };
 
@@ -65,7 +66,7 @@ module.exports = function(MsrpSdk) {
     });
 
     session.on('socketClose', function(hadError, session) {
-      sessionController.removeSession(session.sid);
+      sessionController.removeSession(session);
       sessionController.emit('socketClose', hadError, session);
     });
 
@@ -73,18 +74,13 @@ module.exports = function(MsrpSdk) {
       sessionController.emit('socketConnect', session);
     });
 
-    session.on('socketEnd', function(session) {
-      sessionController.removeSession(session.sid);
-      sessionController.emit('socketEnd', session);
-    });
-
     session.on('socketError', function(error, session) {
-      sessionController.removeSession(session.sid);
+      sessionController.removeSession(session);
       sessionController.emit('socketError', error, session);
     });
 
     session.on('socketTimeout', function(session) {
-      sessionController.removeSession(session.sid);
+      sessionController.removeSession(session);
       sessionController.emit('socketTimeout', session);
     });
   }

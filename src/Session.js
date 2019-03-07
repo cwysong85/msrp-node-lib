@@ -5,12 +5,10 @@ var portfinder = require('portfinder');
 var EventEmitter = require('events').EventEmitter;
 
 module.exports = function(MsrpSdk) {
-  // Load needed configuration
-  portfinder.basePort = MsrpSdk.Config.outboundBasePort || 40000;
-  portfinder.highestPort = MsrpSdk.Config.outboundHighestPort || 60000;
+  // Load configuration
+  var configuredBasePort = MsrpSdk.Config.outboundBasePort || 49152;
+  var configuredHighestPort = MsrpSdk.Config.outboundHighestPort || 65535;
 
-  // TODO: (LVM) Maybe we can move the heartbeat related properties out of the MSRP Session class
-  // since they are fixed general configuration parameters
   /**
    * MSRP Session
    * @class
@@ -21,12 +19,9 @@ module.exports = function(MsrpSdk) {
    * @property {Object} remoteSdp SDP object contanining the remote SDP
    * @property {Object} socket Session socket
    * @property {Boolean} reinvite Flag that indicates if a re-INVITE has just been received
-   * @property {Boolean} heartBeat Flag for enabling/disabling heartbeats
-   * @property {Number} heartBeatInterval Interval for heartbeats
-   * @property {Number} heartBeatTimeout Timeout for heartbeats
-   * @property {Object} heartBeatTransIds Disctionary of heartbeats transaction IDs
-   * @property {Function} heartBeatPingFunc Ping function for heartbeats
-   * @property {Function} heartBeatTimeOutFunc Timeout function for heartbeats
+   * @property {Object} heartbeatsTransIds Dictionary of heartbeats transaction IDs
+   * @property {Function} heartbeatPingFunc Ping function for heartbeats
+   * @property {Function} heartbeatTimeoutFunc Timeout function for heartbeats
    * @property {Boolean} setHasNotRan Flag indicating if setDescription has already been called during the SDP negotiation
    * @property {Boolean} getHasNotRan Flag indicating if getDescription has already been called during the SDP negotiation
    */
@@ -38,12 +33,9 @@ module.exports = function(MsrpSdk) {
     this.remoteSdp = null;
     this.socket = null;
     this.reinvite = false;
-    this.heartBeat = (MsrpSdk.Config.heartBeat !== false) ? true : false;
-    this.heartBeatInterval = MsrpSdk.Config.heartBeatInterval || 5000;
-    this.heartBeatTimeout = MsrpSdk.Config.heartBeatTimeout || 10000;
-    this.heartBeatTransIds = {};
-    this.heartBeatPingFunc = null;
-    this.heartBeatTimeOutFunc = null;
+    this.heartbeatsTransIds = {};
+    this.heartbeatPingFunc = null;
+    this.heartbeatTimeoutFunc = null;
     this.setHasNotRan = true;
     this.getHasNotRan = true;
   };
@@ -220,11 +212,33 @@ module.exports = function(MsrpSdk) {
   Session.prototype.end = function() {
     var session = this;
     MsrpSdk.Logger.debug('[MSRP Session] Ending MSRP session %s...', session.sid);
-    if (MsrpSdk.Config.heartBeat !== false) {
+    if (MsrpSdk.Config.enableHeartbeats !== false) {
       session.stopHeartBeat();
     }
     if (session.socket) {
-      session.socket.end();
+      session.closeSocket();
+    }
+  };
+
+  /**
+   * Closes a session socket
+   */
+  Session.prototype.closeSocket = function() {
+    var session = this;
+    MsrpSdk.Logger.debug('[MSRP Session] Closing MSRP session %s socket...', session.sid);
+    if (session.socket) {
+
+      // Check if the socket is being reused by other session
+      var isSocketReused = MsrpSdk.SessionController.sessions.filter(function(sessionItem) {
+        return sessionItem.socket === session.socket;
+      }).length > 1;
+
+      // If it is not being reused, close the socket. Otherwise, just remove the session.
+      if (!isSocketReused) {
+        session.socket.end();
+      } else {
+        MsrpSdk.SessionController.removeSession(session);
+      }
     }
   };
 
@@ -234,36 +248,41 @@ module.exports = function(MsrpSdk) {
   Session.prototype.stopHeartBeat = function() {
     var session = this;
     MsrpSdk.Logger.debug('[MSRP Session] Stopping MSRP heartbeats for session %s...', session.sid);
-    clearInterval(session.heartBeatPingFunc);
-    clearInterval(session.heartBeatTimeOutFunc);
-    session.heartBeatPingFunc = null;
-    session.heartBeatTimeOutFunc = null;
+    clearInterval(session.heartbeatPingFunc);
+    clearInterval(session.heartbeatTimeoutFunc);
+    session.heartbeatPingFunc = null;
+    session.heartbeatTimeoutFunc = null;
   };
 
   /**
    * Starts MSRP heartbeats
-   * @param  {Number} interval        Ping interval
-   * @param  {Number} timeOutInterval Time out interval
    */
-  Session.prototype.startHeartBeat = function(interval, timeOutInterval) {
+  Session.prototype.startHeartBeat = function() {
     var session = this;
+    var heartbeatsInterval = MsrpSdk.Config.heartbeatsInterval || 5000;
+    var heartbeatsTimeout = MsrpSdk.Config.heartbeatsTimeout || 10000;
+
     MsrpSdk.Logger.debug('[MSRP Session] Starting MSRP heartbeats for session %s...', session.sid);
-    var ping = function() {
-      session.sendMessage('HEARTBEAT', function() {}, 'text/x-msrp-heartbeat');
-    };
-    session.heartBeatPingFunc = setInterval(ping, interval);
-    var timeOut = function() {
-      for (var key in session.heartBeatTransIds) { // Loop through all heartbeats
-        if (session.heartBeatTransIds.hasOwnProperty(key)) { // Check if key has a property
-          var date = new Date();
-          diff = (date.getTime() - session.heartBeatTransIds[key]); // Get time difference
-          if (diff > timeOutInterval) { // If the difference is greater than timeout
-            session.emit('socketClose', true, session); // close socket
+
+    // Send heartbeats
+    function sendHeartbeat() {
+      session.sendMessage('HEARTBEAT', null, 'text/x-msrp-heartbeat');
+    }
+    session.heartbeatPingFunc = setInterval(sendHeartbeat, heartbeatsInterval);
+
+    // Look for timeouts every second
+    function heartbeatTimeoutMonitor() {
+      for (var key in session.heartbeatsTransIds) { // Loop through all stored heartbeats
+        if (session.heartbeatsTransIds.hasOwnProperty(key)) { // Check if key has a property
+          var diff = Date.now() - session.heartbeatsTransIds[key]; // Get time difference
+          if (diff > heartbeatsTimeout) { // If the difference is greater than heartbeatsTimeout
+            MsrpSdk.Logger.error('[MSRP Session] MSRP heartbeat timeout for session %s', session.sid);
+            session.emit('socketClose', true, session); // Close socket
           }
         }
       }
-    };
-    session.heartBeatTimeOutFunc = setInterval(timeOut, 1000); // Check for a failed heartbeat every 1 second
+    }
+    session.heartbeatTimeoutFunc = setInterval(heartbeatTimeoutMonitor, 1000);
   };
 
   /**
@@ -316,12 +335,12 @@ module.exports = function(MsrpSdk) {
         } catch (error) {
           MsrpSdk.Logger.error('[MSRP Session] An error ocurred while sending the initial bodyless MSRP message:', error);
         }
-
-        // Start heartbeats if enabled
-        if (session.heartBeat) {
-          session.startHeartBeat(session.heartBeatInterval);
-        }
       });
+    }
+
+    // Start heartbeats if enabled
+    if (MsrpSdk.Config.enableHeartbeats !== false) {
+      session.startHeartBeat();
     }
 
     // Reset SDP negotiation flags
@@ -337,7 +356,11 @@ module.exports = function(MsrpSdk) {
   function getAssignedPort(setup) {
     return new Promise(function(resolve, reject) {
       if (setup === 'active') {
-        return resolve(portfinder.getPortPromise());
+        var randomBasePort = Math.ceil(Math.random() * (configuredHighestPort - configuredBasePort)) + configuredBasePort;
+        return resolve(portfinder.getPortPromise({
+          port: randomBasePort,
+          stopPort: configuredHighestPort
+        }));
       } else {
         return resolve(MsrpSdk.Config.port);
       }

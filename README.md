@@ -52,7 +52,7 @@ Socket connected event and MSRP session events:
 ```
 msrpServer.on('socketConnect', function(session) {
     console.log('MSRP socket connected!');
-    
+
     // create a session
     var msrpSession = msrp.SessionController.createSession();
 
@@ -83,9 +83,4 @@ msrpServer.on('socketError', function() {
 msrpServer.on('socketClose', function() {
 	console.log('MSRP socket closed');
 });
-
-msrpServer.on('socketEnd', function() {
-	console.log('MSRP socket ended');
-});
  ```
-

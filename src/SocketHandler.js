@@ -63,24 +63,19 @@ module.exports = function(MsrpSdk) {
         return;
       }
 
-      // Have we started heartbeats yet and is this a passive session?
-      // TODO: (LVM) Do we have to be passive for doing heartbeats?
-      if (session.localSdp && session.localSdp.attributes.setup[0] === 'passive' && session.heartBeat) {
-        session.startHeartBeat(session.heartBeatInterval);
-      }
-
       // If this is a response to a heartbeat
-      if (msg.tid && session.heartBeatTransIds[msg.tid]) {
-        MsrpSdk.Logger.debug('[MSRP SocketHandler] MSRP heartbeat response received: %s', msg.tid);
-        // TODO: (LVM) Workaround by Brice for TCC issue below. Review once the TCC is fixed.
+      if (msg.tid && session.heartbeatsTransIds[msg.tid]) {
+        MsrpSdk.Logger.debug('[MSRP SocketHandler] MSRP heartbeat response received from %s (tid: %s)', msg.fromPath, msg.tid);
+        // TODO: (LVM) Workaround by Brice for the TCC issue below. Review once the TCC is fixed.
         // Is the response good?
         if (msg.status === 200) {
           setTimeout(function() {
-            session.heartBeatTransIds = {};
+            session.heartbeatsTransIds = {};
           }, 500); // (BA) timeout is a workaround, until TCC is fixed
         } else if (msg.status >= 500) { // If not okay, close session
+          MsrpSdk.Logger.debug('[MSRP SocketHandler] MSRP heartbeat error received from %s (tid: %s)', msg.fromPath, msg.tid);
           // Should we close session, or account for other response codes?
-          session.emit('socketClose', true, session);
+          session.end();
           return;
         }
       }
@@ -117,7 +112,7 @@ module.exports = function(MsrpSdk) {
       var sessionSocketRemoteAddress = session.socket.remoteAddress + ':' + session.socket.remotePort;
       if (socketRemoteAddress !== sessionSocketRemoteAddress) {
         removeSocketListeners(session.socket);
-        session.socket.end();
+        session.closeSocket();
         session.socket = socket;
       }
 
@@ -266,24 +261,17 @@ module.exports = function(MsrpSdk) {
       }
     });
 
-    socket.on('end', function() {
-      MsrpSdk.Logger.debug('[MSRP SocketHandler] Socket ended');
-      if (session) {
-        session.emit('socketEnd', session);
-      }
-    });
-
     socket.on('send', function(message, routePaths, cb) {
       if (!message || !routePaths) {
         return;
       }
 
       var sender = new MsrpSdk.ChunkSender(routePaths, message.body, message.contentType);
-      var date = new Date();
-      // TODO: (LVM) If session doesn't exist, the next line breaks the process
-      if (message.contentType === "text/x-msrp-heartbeat" && session.heartBeat) {
-        session.heartBeatTransIds[sender.tid] = date.getTime();
-        MsrpSdk.Logger.debug('[MSRP SocketHandler] MSRP heartbeat sent %s', sender.tid);
+
+      // Logic for keeping track of sent heartbeats
+      if (session && message.contentType === 'text/x-msrp-heartbeat') {
+        session.heartbeatsTransIds[sender.tid] = Date.now();
+        MsrpSdk.Logger.debug('[MSRP SocketHandler] MSRP heartbeat sent to %s (tid: %s)', sender.session.toPath, sender.tid);
       }
 
       activeSenders.push({
@@ -409,7 +397,9 @@ module.exports = function(MsrpSdk) {
       if (sender.isSendComplete()) {
         // Remove this sender from the active list
         activeSenders.shift();
-        cb();
+        if (cb) {
+          cb();
+        }
       } else if (activeSenders.length > 1) {
         // For fairness, move this sender to the end of the queue
         activeSenders.push(activeSenders.shift());
@@ -486,7 +476,6 @@ module.exports = function(MsrpSdk) {
     socket.removeAllListeners('timeout');
     socket.removeAllListeners('error');
     socket.removeAllListeners('close');
-    socket.removeAllListeners('end');
     socket.removeAllListeners('send');
   }
 
