@@ -213,7 +213,7 @@ module.exports = function(MsrpSdk) {
     var session = this;
     MsrpSdk.Logger.debug('[MSRP Session] Ending MSRP session %s...', session.sid);
     if (MsrpSdk.Config.enableHeartbeats !== false) {
-      session.stopHeartBeat();
+      session.stopHeartbeats();
     }
     if (session.socket) {
       session.closeSocket();
@@ -245,7 +245,7 @@ module.exports = function(MsrpSdk) {
   /**
    * Stops MSRP heartbeats
    */
-  Session.prototype.stopHeartBeat = function() {
+  Session.prototype.stopHeartbeats = function() {
     var session = this;
     MsrpSdk.Logger.debug('[MSRP Session] Stopping MSRP heartbeats for session %s...', session.sid);
     clearInterval(session.heartbeatPingFunc);
@@ -257,7 +257,7 @@ module.exports = function(MsrpSdk) {
   /**
    * Starts MSRP heartbeats
    */
-  Session.prototype.startHeartBeat = function() {
+  Session.prototype.startHeartbeats = function() {
     var session = this;
     var heartbeatsInterval = MsrpSdk.Config.heartbeatsInterval || 5000;
     var heartbeatsTimeout = MsrpSdk.Config.heartbeatsTimeout || 10000;
@@ -338,9 +338,9 @@ module.exports = function(MsrpSdk) {
       });
     }
 
-    // Start heartbeats if enabled
-    if (MsrpSdk.Config.enableHeartbeats !== false) {
-      session.startHeartBeat();
+    // Start heartbeats if enabled and not running yet
+    if (MsrpSdk.Config.enableHeartbeats !== false && !session.heartbeatPingFunc && !session.heartbeatTimeoutFunc) {
+      session.startHeartbeats();
     }
 
     // Reset SDP negotiation flags
