@@ -72,7 +72,7 @@ module.exports = function(MsrpSdk) {
           setTimeout(function() {
             session.heartbeatsTransIds = {};
           }, 500); // (BA) timeout is a workaround, until TCC is fixed
-        } else if (msg.status >= 500) { // If not okay, close session
+        } else if (msg.status >= 400) { // If not okay, close session
           MsrpSdk.Logger.debug('[MSRP SocketHandler] MSRP heartbeat error received from %s (tid: %s)', msg.fromPath, msg.tid);
           // Should we close session, or account for other response codes?
           session.end();
