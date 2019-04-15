@@ -66,12 +66,17 @@ module.exports = function(MsrpSdk) {
       // If this is a response to a heartbeat
       if (msg.tid && session.heartbeatsTransIds[msg.tid]) {
         MsrpSdk.Logger.debug('[MSRP SocketHandler] MSRP heartbeat response received from %s (tid: %s)', msg.fromPath, msg.tid);
+        // TODO: (LVM) If multiple sessions use a single socket the SocketHandler is instanciated just once and the local session variable gets overwritten.
+        // We need to fix this before fixing heartbeats.
         // TODO: (LVM) Workaround by Brice for the TCC issue below. Review once the TCC is fixed.
         // Is the response good?
         if (msg.status === 200) {
-          setTimeout(function() {
-            session.heartbeatsTransIds = {};
-          }, 500); // (BA) timeout is a workaround, until TCC is fixed
+          // TODO: (LVM) Luis' code
+          delete session.heartbeatsTransIds[msg.tid];
+          // TODO: (LVM) Brice's code
+          // setTimeout(function() {
+          //   session.heartbeatsTransIds = {};
+          // }, 500); // (BA) timeout is a workaround, until TCC is fixed
         } else if (msg.status >= 400) { // If not okay, close session
           MsrpSdk.Logger.debug('[MSRP SocketHandler] MSRP heartbeat error received from %s (tid: %s)', msg.fromPath, msg.tid);
           // Should we close session, or account for other response codes?
@@ -204,7 +209,7 @@ module.exports = function(MsrpSdk) {
               msg.body = buffer.toString('utf-8');
 
               if (!isHeartBeatMessage) {
-                session.emit('message', msg);
+                session.emit('message', msg, session);
               }
             } else {
               // Receive ongoing
