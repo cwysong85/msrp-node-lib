@@ -57,6 +57,12 @@ module.exports = function(MsrpSdk) {
       return (acceptType === contentType || acceptType === '*');
     });
 
+    if (session.remoteSdp.media && session.remoteSdp.media[0] && session.remoteSdp.media[0].attributes) {
+      if (session.remoteSdp.media[0].attributes.sendonly) {
+        canSend = false;
+      }
+    }
+
     if (canSend) {
       if (session.socket) {
         session.socket.emit('send', {

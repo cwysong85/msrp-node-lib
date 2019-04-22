@@ -63,6 +63,14 @@ module.exports = function(MsrpSdk) {
         return;
       }
 
+      if (session.remoteSdp.media && session.remoteSdp.media[0] && session.remoteSdp.media[0].attributes) {
+        if (session.remoteSdp.media[0].attributes.recvonly) {
+          MsrpSdk.Logger.warn('[MSRP SocketHandler] MSRP data is not allowed when session requested "a=recvonly" in SDP. Not forwarding this message to the endpoint until "a=sendonly" or "a=sendrecv" is requested.');
+          sendResponse(msg, socket, toUri.uri, MsrpSdk.Status.FORBIDDEN);
+          return;
+        }
+      }
+
       // If this is a response to a heartbeat
       if (msg.tid && session.heartbeatsTransIds[msg.tid]) {
         MsrpSdk.Logger.debug('[MSRP SocketHandler] MSRP heartbeat response received from %s (tid: %s)', msg.fromPath, msg.tid);
