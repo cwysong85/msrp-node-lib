@@ -40,7 +40,9 @@ module.exports = function(MsrpSdk) {
       this.attributes[name] = [];
       this.attributeNameOrder.push(name);
     }
-    this.attributes[name].push(value);
+    if (value && typeof value === 'string') {
+      this.attributes[name] = this.attributes[name].concat(value.split(' '));
+    }
   };
 
   Sdp.Session.prototype.removeAttribute = function(name) {
@@ -448,7 +450,9 @@ module.exports = function(MsrpSdk) {
       this.attributes[name] = [];
       this.attributeNameOrder.push(name);
     }
-    this.attributes[name].push(value);
+    if (value && typeof value === 'string') {
+      this.attributes[name] = this.attributes[name].concat(value.split(' '));
+    }
   };
   Sdp.Media.prototype.removeAttribute = function(name) {
     if (this.attributes[name]) {

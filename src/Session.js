@@ -18,7 +18,9 @@ module.exports = function(MsrpSdk) {
    * @property {Object} localSdp SDP object contanining the local SDP
    * @property {Object} remoteSdp SDP object contanining the remote SDP
    * @property {Object} socket Session socket
-   * @property {Boolean} reinvite Flag that indicates if a re-INVITE has just been received
+   * @property {Boolean} updated Flag indicating if Session has been updated since it was initially created
+   * @property {Boolean} ended Flag that indicating if Session is ended
+   * @property {Boolean} reinvite (Deprecated) Flag that indicates if a re-INVITE has just been received // TODO: Deprecated
    * @property {Object} heartbeatsTransIds Dictionary of heartbeats transaction IDs
    * @property {Function} heartbeatPingFunc Ping function for heartbeats
    * @property {Function} heartbeatTimeoutFunc Timeout function for heartbeats
@@ -32,7 +34,9 @@ module.exports = function(MsrpSdk) {
     this.localSdp = null;
     this.remoteSdp = null;
     this.socket = null;
-    this.reinvite = false;
+    this.updated = false;
+    this.ended = false;
+    this.reinvite = false; // TODO: Deprecated
     this.heartbeatsTransIds = {};
     this.heartbeatPingFunc = null;
     this.heartbeatTimeoutFunc = null;
@@ -40,7 +44,7 @@ module.exports = function(MsrpSdk) {
     this.getHasNotRan = true;
   };
 
-  util.inherits(Session, EventEmitter); // Sessions emit events in SocketHandler
+  util.inherits(Session, EventEmitter); // NOTE: Sessions emit events in SocketHandler too
 
   /**
    * Sends an MSRP Message to the Session's remote party
@@ -51,15 +55,18 @@ module.exports = function(MsrpSdk) {
   Session.prototype.sendMessage = function(body, callback, contentType) {
     var session = this;
 
-    // See if we can send this Content-Type to the remote client
+    // Check if the remote endpoint will accept the message by checking its SDP
     contentType = contentType || 'text/plain';
-    var canSend = session.remoteSdp.attributes.acceptTypes.some(function(acceptType) {
+    var canSend = session.remoteSdp.attributes['accept-types'].some(function(acceptType) {
       return (acceptType === contentType || acceptType === '*');
     });
+    if (session.remoteSdp.attributes.sendonly || session.remoteSdp.attributes.inactive) {
+      canSend = false;
+    }
 
     if (canSend) {
       if (session.socket) {
-        session.socket.emit('send', {
+        session.socket.sendMessage(session, {
           body: body,
           contentType: contentType
         }, {
@@ -69,12 +76,10 @@ module.exports = function(MsrpSdk) {
       } else {
         // We don't have a socket. Did the other side send a connection?
         MsrpSdk.Logger.error('[MSRP Session] Cannot send message because there is not an active socket! Did the remote side connect? Check a=setup line in SDP media.');
-        session.emit('socketError', 'Cannot send message because there is not an active socket!', session);
-        session.emit('socketClose', true, session);
         return;
       }
     } else {
-      MsrpSdk.Logger.warn('[MSRP Session] Cannot send message due to incompatible content types exchanged in SDP');
+      MsrpSdk.Logger.warn('[MSRP Session] Cannot send message due to remote endpoint SDP attributes');
       return;
     }
   };
@@ -83,9 +88,8 @@ module.exports = function(MsrpSdk) {
    * Function called during the SDP negotiation to create the local SDP.
    * @param  {Function} onSuccess onSuccess callback
    * @param  {Function} onFailure onFailure callback
-   * @param  {Object}   mediaHint SIPjs parameter
    */
-  Session.prototype.getDescription = function(onSuccess, onFailure, mediaHint) {
+  Session.prototype.getDescription = function(onSuccess, onFailure) {
     var session = this;
     MsrpSdk.Logger.debug('[MSRP Session] Creating local SDP...');
 
@@ -109,6 +113,7 @@ module.exports = function(MsrpSdk) {
         } else if (session.remoteSdp.attributes.setup[0] === 'passive') {
           localSdp.addAttribute('setup', 'active');
         } else {
+          MsrpSdk.Logger.error('[MSRP Session] Invalid remote a=setup value');
           return onFailure('Invalid remote a=setup value');
         }
       } else {
@@ -134,15 +139,14 @@ module.exports = function(MsrpSdk) {
         session.localEndpoint = new MsrpSdk.URI(path);
         session.getHasNotRan = false;
 
-        // Extra logic for re-INVITEs
+        // Extra logic for session updates
         var callback;
-        if (session.reinvite) {
-          // Emit reinvite event after calling startConnection
+        if (session.updated) {
+          // Emit update event after calling startConnection
           callback = function() {
-            session.emit('reinvite', session);
+            session.emit('update', session);
+            session.emit('reinvite', session); // TODO: Deprecated
           };
-          // Reset reinvite flag
-          session.reinvite = false;
         }
 
         // Start connection if needed
@@ -168,39 +172,40 @@ module.exports = function(MsrpSdk) {
     var remoteSdp = new MsrpSdk.Sdp.Session(description);
 
     // Attributes
-    for (var i = 0; i < remoteSdp.media.length; i++) {
-      // Setup
-      // NOTE: RFC 4975 states that if a MSRP client initiates a connection it should therefore be active
-      // unless it cannot be active, therefore set the "setup" attribute to "passive"
-      // NOTE: draft-pd-dispatch-msrp-websocket-08 doesn't have the active, passive, actpass attribute defined
-      // TODO: (LVM) We are looping though media objects and overwritting parameters. I think this is not right.
-      if (remoteSdp.media[i].attributes) {
-        if (remoteSdp.media[i].attributes.setup) {
-          remoteSdp.attributes.setup = remoteSdp.media[i].attributes.setup;
-        }
-      }
-      // Path and session's remote endpoints
-      if (remoteSdp.media[i].attributes.path) {
-        remoteSdp.attributes.path = remoteSdp.media[i].attributes.path[0].split(' ');
-      }
-      // Accept-types
-      if (remoteSdp.media[i].attributes['accept-types']) {
-        remoteSdp.attributes.acceptTypes = remoteSdp.media[i].attributes['accept-types'][0].split(' ');
-      }
+    var remoteMsrpMedia = remoteSdp.media.find(function(mediaObject) {
+      return mediaObject.proto === 'TCP/MSRP';
+    });
+    remoteSdp.attributes = remoteMsrpMedia.attributes;
+
+    // Path check
+    if (!remoteSdp.attributes.path) {
+      MsrpSdk.Logger.error('[MSRP Session] Path attribute missing in remote endpoint SDP');
+      return onFailure('Path attribute missing in remote endpoint SDP');
     }
 
-    // Success! Remote SDP processed
-    onSuccess();
-
-    // If we already had a remote SDP, this is a re-INVITE
+    // If we are updating an existing session, enable updated flag and close existing socket when needed
     if (session.remoteSdp) {
+      session.updated = true;
       session.reinvite = true;
+      if (session.socket) {
+        if (remoteSdp.attributes.path !== session.remoteSdp.attributes.path) {
+          MsrpSdk.Logger.debug('[MSRP Session] Remote path updated: %s -> %s', session.remoteSdp.attributes.path.join(' '), remoteSdp.attributes.path.join(' '));
+          session.closeSocket();
+        }
+        if (remoteSdp.attributes.inactive) {
+          MsrpSdk.Logger.debug('[MSRP Session] Remote party connection changed to inactive');
+          session.closeSocket();
+        }
+      }
     }
 
     // Update session information
     session.remoteSdp = remoteSdp;
     session.remoteEndpoints = remoteSdp.attributes.path;
     session.setHasNotRan = false;
+
+    // Success! Remote SDP processed
+    onSuccess();
 
     // Start connection if needed
     session.startConnection();
@@ -211,13 +216,55 @@ module.exports = function(MsrpSdk) {
    */
   Session.prototype.end = function() {
     var session = this;
+
+    // Return if session is already ended
+    if (session.ended) {
+      MsrpSdk.Logger.debug('[MSRP Session] MSRP session %s already ended', session.sid);
+      return;
+    }
+
     MsrpSdk.Logger.debug('[MSRP Session] Ending MSRP session %s...', session.sid);
+    // Stop heartbeats if needed
     if (MsrpSdk.Config.enableHeartbeats !== false) {
       session.stopHeartbeats();
     }
+    // Close socket if needed
     if (session.socket) {
       session.closeSocket();
     }
+    // Set ended flag to true
+    session.ended = true;
+    // Emit 'end' event
+    session.emit('end', session);
+  };
+
+  /**
+   * Sets the session's socket and and the needed socket event listeners
+   * @param  {Object} socket Socket
+   */
+  Session.prototype.setSocket = function(socket) {
+    var session = this;
+    session.socket = socket;
+
+    // TODO: Add origin check. Ticket: https://github.com/cwysong85/msrp-node-lib/issues/20
+
+    // TODO: (LVM55) TEST
+    MsrpSdk.Logger.warn('---> Setting socket. %s:%s -> %s:%s', socket.localAddress, socket.localPort, socket.remoteAddress, socket.remotePort);
+
+    // Forward socket events
+    socket.on('close', function(hadError) {
+      session.emit('socketClose', hadError, session);
+    });
+    socket.on('error', function() {
+      session.emit('socketError', session);
+    });
+    socket.on('timeout', function() {
+      session.emit('socketTimeout', session);
+    });
+
+    // Emit socketConnect event
+    session.emit('socketSet', session);
+    session.emit('socketConnect', session); // TODO: Deprecated
   };
 
   /**
@@ -225,20 +272,25 @@ module.exports = function(MsrpSdk) {
    */
   Session.prototype.closeSocket = function() {
     var session = this;
-    MsrpSdk.Logger.debug('[MSRP Session] Closing MSRP session %s socket...', session.sid);
-    if (session.socket) {
 
-      // Check if the socket is being reused by other session
+    // TODO: (LVM55) TEST
+    MsrpSdk.Logger.debug('---> Closing socket. %s:%s -> %s:%s', session.socket.localAddress, session.socket.localPort, session.socket.remoteAddress, session.socket.remotePort);
+
+    if (session.socket) {
+      // Check if the session socket is being reused by other session
       var isSocketReused = MsrpSdk.SessionController.sessions.filter(function(sessionItem) {
         return sessionItem.socket === session.socket;
       }).length > 1;
 
-      // If it is not being reused, close the socket. Otherwise, just remove the session.
+      // Close the socket if it is not being reused by other session
       if (!isSocketReused) {
+        MsrpSdk.Logger.debug('[MSRP Session] Closing MSRP session %s socket...', session.sid);
         session.socket.end();
-      } else {
-        MsrpSdk.SessionController.removeSession(session);
       }
+
+      // Clean the session socket attribute
+      MsrpSdk.Logger.debug('[MSRP Session] Removing MSRP session %s socket...', session.sid);
+      delete session.socket;
     }
   };
 
@@ -277,7 +329,10 @@ module.exports = function(MsrpSdk) {
           var diff = Date.now() - session.heartbeatsTransIds[key]; // Get time difference
           if (diff > heartbeatsTimeout) { // If the difference is greater than heartbeatsTimeout
             MsrpSdk.Logger.error('[MSRP Session] MSRP heartbeat timeout for session %s', session.sid);
-            session.emit('socketClose', true, session); // Close socket
+            session.emit('heartbeatTimeout', session);
+            // TODO: (LVM55) TEST
+            MsrpSdk.Logger.debug('---> TIMEOUT!');
+            delete session.heartbeatsTransIds[key];
           }
         }
       }
@@ -292,11 +347,21 @@ module.exports = function(MsrpSdk) {
   Session.prototype.startConnection = function(callback) {
     var session = this;
 
-    // If the SDP negotiation has not been completed, or any of the needed SDPs are missing, execute the callback and return
+    // If the SDP negotiation has not been completed, return
     if (session.getHasNotRan || session.setHasNotRan || !session.remoteSdp || !session.localSdp) {
-      if (callback) {
-        callback();
-      }
+      MsrpSdk.Logger.debug('[MSRP Session] Unable to start connection yet. SDP negotiation in progress.');
+      return;
+    }
+
+    // If the session has an active connection, return
+    if (session.socket && !session.socket.destroyed) {
+      MsrpSdk.Logger.warn('[MSRP Session] Session already has an active connection.');
+      return;
+    }
+
+    // If inactive attribute is present, do not connect
+    if (session.remoteSdp.attributes.inactive) {
+      MsrpSdk.Logger.warn('[MSRP Session] Found "a=inactive" in remote endpoint SDP. Connection not needed.');
       return;
     }
 
@@ -313,14 +378,15 @@ module.exports = function(MsrpSdk) {
 
       // Create socket and connect
       MsrpSdk.Logger.debug('[MSRP Session] Creating socket for session %s...', session.sid);
-      var socket = new net.Socket();
-      session.socket = new MsrpSdk.SocketHandler(socket);
+      var socket = new MsrpSdk.SocketHandler(new net.Socket());
       socket.connect({
         host: remoteEndpointUri.authority,
         port: remoteEndpointUri.port,
         localAddress: localEndpointUri.authority,
         localPort: parseInt(localEndpointUri.port)
       }, function() {
+        // Assign socket to the session
+        session.setSocket(socket);
         // Send bodiless MSRP message
         var request = new MsrpSdk.Message.OutgoingRequest({
           toPath: session.remoteEndpoints,

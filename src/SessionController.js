@@ -31,6 +31,10 @@ module.exports = function(MsrpSdk) {
    */
   SessionController.prototype.getSession = function(sessionId) {
     var sessionController = this;
+
+    // TODO: (LVM55) TESTING
+    MsrpSdk.Logger.debug('---> SESSIONS:', sessionController.sessions.length);
+
     return sessionController.sessions.find(function(session) {
       return session.sid === sessionId;
     });
@@ -45,6 +49,7 @@ module.exports = function(MsrpSdk) {
     if (sessionController.sessions.includes(session)) {
       sessionController.sessions.splice(sessionController.sessions.indexOf(session), 1);
     }
+    session.end();
   };
 
   /**
@@ -53,35 +58,56 @@ module.exports = function(MsrpSdk) {
    * @param  {SessionController} sessionController Session controller
    */
   function forwardSessionEvents(session, sessionController) {
-    session.on('message', function(msg, session) {
-      sessionController.emit('message', msg, session);
+    // Session events
+    session.on('end', function(session) {
+      sessionController.removeSession(session);
+      sessionController.emit('end', session);
     });
 
-    session.on('response', function(msg, session) {
-      sessionController.emit('response', msg, session);
+    session.on('message', function(message, session) {
+      sessionController.emit('message', message, session);
     });
 
+    // TODO: Deprecated
     session.on('reinvite', function(session) {
       sessionController.emit('reinvite', session);
     });
 
+    session.on('update', function(session) {
+      sessionController.emit('update', session);
+    });
+
+
+    // Socket events
     session.on('socketClose', function(hadError, session) {
-      sessionController.removeSession(session);
       sessionController.emit('socketClose', hadError, session);
     });
 
+    // TODO: Deprecated
     session.on('socketConnect', function(session) {
       sessionController.emit('socketConnect', session);
     });
 
-    session.on('socketError', function(error, session) {
-      sessionController.removeSession(session);
-      sessionController.emit('socketError', error, session);
+    session.on('socketError', function(session) {
+      sessionController.emit('socketError', session);
+    });
+
+    session.on('socketSet', function(session) {
+      sessionController.emit('socketSet', session);
     });
 
     session.on('socketTimeout', function(session) {
-      sessionController.removeSession(session);
       sessionController.emit('socketTimeout', session);
+    });
+
+
+    // Heartbeats events
+    session.on('heartbeatFailure', function(session) {
+      sessionController.emit('heartbeatFailure', session);
+    });
+
+    session.on('heartbeatTimeout', function(session) {
+      sessionController.emit('heartbeatTimeout', session);
     });
   }
 
