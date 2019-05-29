@@ -31,10 +31,6 @@ module.exports = function(MsrpSdk) {
    */
   SessionController.prototype.getSession = function(sessionId) {
     var sessionController = this;
-
-    // TODO: (LVM55) TESTING
-    MsrpSdk.Logger.debug('---> SESSIONS:', sessionController.sessions.length);
-
     return sessionController.sessions.find(function(session) {
       return session.sid === sessionId;
     });

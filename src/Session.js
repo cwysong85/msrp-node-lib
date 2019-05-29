@@ -248,9 +248,6 @@ module.exports = function(MsrpSdk) {
 
     // TODO: Add origin check. Ticket: https://github.com/cwysong85/msrp-node-lib/issues/20
 
-    // TODO: (LVM55) TEST
-    MsrpSdk.Logger.warn('---> Setting socket. %s:%s -> %s:%s', socket.localAddress, socket.localPort, socket.remoteAddress, socket.remotePort);
-
     // Forward socket events
     socket.on('close', function(hadError) {
       session.emit('socketClose', hadError, session);
@@ -272,10 +269,6 @@ module.exports = function(MsrpSdk) {
    */
   Session.prototype.closeSocket = function() {
     var session = this;
-
-    // TODO: (LVM55) TEST
-    MsrpSdk.Logger.debug('---> Closing socket. %s:%s -> %s:%s', session.socket.localAddress, session.socket.localPort, session.socket.remoteAddress, session.socket.remotePort);
-
     if (session.socket) {
       // Check if the session socket is being reused by other session
       var isSocketReused = MsrpSdk.SessionController.sessions.filter(function(sessionItem) {
@@ -330,8 +323,6 @@ module.exports = function(MsrpSdk) {
           if (diff > heartbeatsTimeout) { // If the difference is greater than heartbeatsTimeout
             MsrpSdk.Logger.error('[MSRP Session] MSRP heartbeat timeout for session %s', session.sid);
             session.emit('heartbeatTimeout', session);
-            // TODO: (LVM55) TEST
-            MsrpSdk.Logger.debug('---> TIMEOUT!');
             delete session.heartbeatsTransIds[key];
           }
         }
