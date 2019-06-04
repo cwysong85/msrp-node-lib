@@ -64,6 +64,12 @@ module.exports = function(MsrpSdk) {
       canSend = false;
     }
 
+    if (session.remoteSdp.media && session.remoteSdp.media[0] && session.remoteSdp.media[0].attributes) {
+      if (session.remoteSdp.media[0].attributes.sendonly) {
+        canSend = false;
+      }
+    }
+
     if (canSend) {
       if (session.socket) {
         session.socket.sendMessage(session, {
