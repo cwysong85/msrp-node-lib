@@ -26,18 +26,22 @@ module.exports = function(MsrpSdk) {
       // Send data to tracing function
       traceMsrp(data);
 
-      // Parse message
-      var message = MsrpSdk.parseMessage(data);
-      if (!message) {
-        MsrpSdk.Logger.warn('[MSRP SocketHandler] Unable to parse incoming message. Message was discarded.');
-        return;
-      }
-
-      if (message.method) {
-        handleIncomingRequest(message, socket);
-      } else {
-        handleIncomingResponse(message);
-      }
+      // Incoming data may include more than one MSRP message. Match messages using regex.
+      var messages = data.match(/MSRP .*?-{7}\S*?[$#+]/gs);
+      messages.forEach(function(message) {
+        // Parse each message
+        var parsedMessage = MsrpSdk.parseMessage(message);
+        if (!parsedMessage) {
+          MsrpSdk.Logger.warn('[MSRP SocketHandler] Unable to parse incoming message. Message was discarded. Message:', message);
+          return;
+        }
+        // Handle each message
+        if (parsedMessage.method) {
+          handleIncomingRequest(parsedMessage, socket);
+        } else {
+          handleIncomingResponse(parsedMessage);
+        }
+      });
     });
 
     // On connect:
