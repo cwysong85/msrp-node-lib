@@ -27,7 +27,7 @@ module.exports = function(MsrpSdk) {
       traceMsrp(data);
 
       // Incoming data may include more than one MSRP message. Match messages using regex.
-      var messages = data.match(/MSRP .*?-{7}\S*?[$#+]/gs);
+      var messages = data.match(/MSRP [^]*?-{7}\S*?[$#+]/g);
       messages.forEach(function(message) {
         // Parse each message
         var parsedMessage = MsrpSdk.parseMessage(message);
