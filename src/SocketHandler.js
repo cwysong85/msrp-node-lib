@@ -124,7 +124,7 @@ module.exports = function(MsrpSdk) {
     }
 
     // Set session socket if needed
-    if (!session.socket) {
+    if (!session.socket || session.socket.destroyed) {
       session.setSocket(socket);
     }
 
@@ -358,9 +358,10 @@ module.exports = function(MsrpSdk) {
       var msg = sender.getNextChunk();
       var encodeMsg = msg.encode();
       // Check socket availability before writing
-      if (socket.destroyed) {
-        MsrpSdk.Logger.error('[MSRP SocketHandler] Unable to send message. Socket is destroyed.');
-        return;
+      if (!socket || socket.destroyed) {
+        MsrpSdk.Logger.error('[MSRP SocketHandler] Cannot send message. Socket unavailable.');
+        activeSenders.shift();
+        continue;
       }
       socket.write(encodeMsg);
       traceMsrp(encodeMsg);
