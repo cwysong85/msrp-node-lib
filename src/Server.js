@@ -23,7 +23,7 @@ module.exports = function(MsrpSdk) {
     var server = this;
     server.server.listen(MsrpSdk.Config.port, MsrpSdk.Config.host, function() {
       var serverAddress = server.server.address();
-      MsrpSdk.Logger.info('[MSRP Server] MSRP TCP server listening on %s:%s', serverAddress.address, serverAddress.port);
+      MsrpSdk.Logger.info(`[MSRP Server] MSRP TCP server listening on ${serverAddress.address}:${serverAddress.port}`);
       if (MsrpSdk.Config.traceMsrp) {
         MsrpSdk.Logger.info('[MSRP Server] MSRP tracing enabled');
       }

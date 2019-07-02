@@ -159,7 +159,7 @@ module.exports = function(MsrpSdk) {
         session.startConnection(callback);
       })
       .catch(function(error) {
-        MsrpSdk.Logger.error('[MSRP Session] An error ocurred while creating the local SDP:', error);
+        MsrpSdk.Logger.error(`[MSRP Session] An error ocurred while creating the local SDP: ${error.toString()}`);
         return;
       });
   };
@@ -195,7 +195,7 @@ module.exports = function(MsrpSdk) {
       session.reinvite = true;
       if (session.socket) {
         if (remoteSdp.attributes.path !== session.remoteSdp.attributes.path) {
-          MsrpSdk.Logger.debug('[MSRP Session] Remote path updated: %s -> %s', session.remoteSdp.attributes.path.join(' '), remoteSdp.attributes.path.join(' '));
+          MsrpSdk.Logger.debug(`[MSRP Session] Remote path updated: ${session.remoteSdp.attributes.path.join(' ')} -> ${remoteSdp.attributes.path.join(' ')}`);
           session.closeSocket();
         }
         if (remoteSdp.attributes.inactive) {
@@ -225,11 +225,11 @@ module.exports = function(MsrpSdk) {
 
     // Return if session is already ended
     if (session.ended) {
-      MsrpSdk.Logger.debug('[MSRP Session] MSRP session %s already ended', session.sid);
+      MsrpSdk.Logger.debug(`[MSRP Session] MSRP session ${session.sid} already ended`);
       return;
     }
 
-    MsrpSdk.Logger.debug('[MSRP Session] Ending MSRP session %s...', session.sid);
+    MsrpSdk.Logger.debug(`[MSRP Session] Ending MSRP session ${session.sid}...`);
     // Stop heartbeats if needed
     if (MsrpSdk.Config.enableHeartbeats !== false) {
       session.stopHeartbeats();
@@ -283,12 +283,12 @@ module.exports = function(MsrpSdk) {
 
       // Close the socket if it is not being reused by other session
       if (!isSocketReused) {
-        MsrpSdk.Logger.debug('[MSRP Session] Closing MSRP session %s socket...', session.sid);
+        MsrpSdk.Logger.debug(`[MSRP Session] Closing MSRP session ${session.sid} socket...`);
         session.socket.end();
       }
 
       // Clean the session socket attribute
-      MsrpSdk.Logger.debug('[MSRP Session] Removing MSRP session %s socket...', session.sid);
+      MsrpSdk.Logger.debug(`[MSRP Session] Removing MSRP session ${session.sid} socket...`);
       delete session.socket;
     }
   };
@@ -298,7 +298,7 @@ module.exports = function(MsrpSdk) {
    */
   Session.prototype.stopHeartbeats = function() {
     var session = this;
-    MsrpSdk.Logger.debug('[MSRP Session] Stopping MSRP heartbeats for session %s...', session.sid);
+    MsrpSdk.Logger.debug(`[MSRP Session] Stopping MSRP heartbeats for session ${session.sid}...`);
     clearInterval(session.heartbeatPingFunc);
     clearInterval(session.heartbeatTimeoutFunc);
     session.heartbeatPingFunc = null;
@@ -313,7 +313,7 @@ module.exports = function(MsrpSdk) {
     var heartbeatsInterval = MsrpSdk.Config.heartbeatsInterval || 5000;
     var heartbeatsTimeout = MsrpSdk.Config.heartbeatsTimeout || 10000;
 
-    MsrpSdk.Logger.debug('[MSRP Session] Starting MSRP heartbeats for session %s...', session.sid);
+    MsrpSdk.Logger.debug(`[MSRP Session] Starting MSRP heartbeats for session ${session.sid}...`);
 
     // Send heartbeats
     function sendHeartbeat() {
@@ -327,7 +327,7 @@ module.exports = function(MsrpSdk) {
         if (session.heartbeatsTransIds.hasOwnProperty(key)) { // Check if key has a property
           var diff = Date.now() - session.heartbeatsTransIds[key]; // Get time difference
           if (diff > heartbeatsTimeout) { // If the difference is greater than heartbeatsTimeout
-            MsrpSdk.Logger.error('[MSRP Session] MSRP heartbeat timeout for session %s', session.sid);
+            MsrpSdk.Logger.error(`[MSRP Session] MSRP heartbeat timeout for session ${session.sid}`);
             session.emit('heartbeatTimeout', session);
             delete session.heartbeatsTransIds[key];
           }
@@ -369,12 +369,12 @@ module.exports = function(MsrpSdk) {
 
       // Do nothing if we are trying to connect to ourselves
       if (localEndpointUri.authority === remoteEndpointUri.authority) {
-        MsrpSdk.Logger.warn('[MSRP Session] Not creating a new TCP connection for session %s because we would be talking to ourself. Returning...', session.sid);
+        MsrpSdk.Logger.warn(`[MSRP Session] Not creating a new TCP connection for session ${session.sid} because we would be talking to ourself. Returning...`);
         return;
       }
 
       // Create socket and connect
-      MsrpSdk.Logger.debug('[MSRP Session] Creating socket for session %s...', session.sid);
+      MsrpSdk.Logger.debug(`[MSRP Session] Creating socket for session ${session.sid}...`);
       var socket = new MsrpSdk.SocketHandler(new net.Socket());
       socket.connect({
         host: remoteEndpointUri.authority,
@@ -396,7 +396,7 @@ module.exports = function(MsrpSdk) {
             }
           });
         } catch (error) {
-          MsrpSdk.Logger.error('[MSRP Session] An error ocurred while sending the initial bodyless MSRP message:', error);
+          MsrpSdk.Logger.error(`[MSRP Session] An error ocurred while sending the initial bodyless MSRP message: ${error.toString()}`);
         }
       });
     }
