@@ -15,7 +15,7 @@ module.exports = function(MsrpSdk) {
 
     // Set socket timeout as needed
     if (MsrpSdk.Config.socketTimeout > 0) {
-      MsrpSdk.Logger.debug('[MSRP SocketHandler] Setting socket timeout to', MsrpSdk.Config.socketTimeout);
+      MsrpSdk.Logger.debug(`[MSRP SocketHandler] Setting socket timeout to ${MsrpSdk.Config.socketTimeout}`);
       socket.setTimeout(MsrpSdk.Config.socketTimeout);
     }
 
@@ -32,7 +32,7 @@ module.exports = function(MsrpSdk) {
         // Parse each message
         var parsedMessage = MsrpSdk.parseMessage(message);
         if (!parsedMessage) {
-          MsrpSdk.Logger.warn('[MSRP SocketHandler] Unable to parse incoming message. Message was discarded. Message:', message);
+          MsrpSdk.Logger.warn(`[MSRP SocketHandler] Unable to parse incoming message. Message was discarded. Message: ${message}`);
           return;
         }
         // Handle each message
@@ -56,7 +56,7 @@ module.exports = function(MsrpSdk) {
 
     // On error:
     socket.on('error', function(error) {
-      MsrpSdk.Logger.error('[MSRP SocketHandler] Socket error:', error);
+      MsrpSdk.Logger.error(`[MSRP SocketHandler] Socket error: ${error.toString()}`);
     });
 
     // On close:
@@ -83,7 +83,7 @@ module.exports = function(MsrpSdk) {
       // Logic for keeping track of sent heartbeats
       if (session && message.contentType === 'text/x-msrp-heartbeat') {
         session.heartbeatsTransIds[sender.nextTid] = Date.now();
-        MsrpSdk.Logger.debug('[MSRP SocketHandler] MSRP heartbeat sent to %s (tid: %s)', sender.session.toPath, sender.nextTid);
+        MsrpSdk.Logger.debug(`[MSRP SocketHandler] MSRP heartbeat sent to ${sender.session.toPath} (tid: ${sender.nextTid})`);
       }
 
       activeSenders.push({
@@ -200,7 +200,7 @@ module.exports = function(MsrpSdk) {
 
       // If this is not the last chunk, wait for additional chunks
       if (!chunkReceivers[messageId].isComplete()) {
-        MsrpSdk.Logger.debug('[MSRP SocketHandler] Receiving additional chunks for messageId: ' + messageId + ', bytesReceived: ' + chunkReceivers[messageId].receivedBytes);
+        MsrpSdk.Logger.debug(`[MSRP SocketHandler] Receiving additional chunks for messageId: ${messageId}. Received bytes: ${chunkReceivers[messageId].receivedBytes}`);
         // Return successful response: 200 OK
         sendResponse(request, socket, toUri.uri, MsrpSdk.Status.OK);
         return;
@@ -237,11 +237,11 @@ module.exports = function(MsrpSdk) {
     if (isHeartbeatResponse) {
       if (response.status === 200) {
         // If the response is 200OK, clear all the stored heartbeats
-        MsrpSdk.Logger.debug('[MSRP SocketHandler] MSRP heartbeat response received from %s (tid: %s)', response.fromPath, response.tid);
+        MsrpSdk.Logger.debug(`[MSRP SocketHandler] MSRP heartbeat response received from ${response.fromPath} (tid: ${response.tid})`);
         session.heartbeatsTransIds = {};
       } else if (response.status >= 400) {
         // If not okay, emit 'heartbeatFailure'
-        MsrpSdk.Logger.debug('[MSRP SocketHandler] MSRP heartbeat error received from %s (tid: %s)', response.fromPath, response.tid);
+        MsrpSdk.Logger.debug(`[MSRP SocketHandler] MSRP heartbeat error received from ${response.fromPath} (tid: ${response.tid})`);
         session.emit('heartbeatFailure', session);
       }
     }
@@ -446,7 +446,7 @@ module.exports = function(MsrpSdk) {
     if (MsrpSdk.Config.traceMsrp === false) {
       return;
     }
-    MsrpSdk.Logger.debug('[MSRP SocketHandler]', message);
+    MsrpSdk.Logger.debug(`[MSRP SocketHandler] MSRP trace:\n${message}`);
   }
 
 
