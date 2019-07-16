@@ -177,9 +177,9 @@ module.exports = function(MsrpSdk) {
     // Parse received SDP
     var remoteSdp = new MsrpSdk.Sdp.Session(description);
 
-    // Attributes
+    // Retrieve MSRP media attributes
     var remoteMsrpMedia = remoteSdp.media.find(function(mediaObject) {
-      return mediaObject.proto === 'TCP/MSRP';
+      return mediaObject.proto.includes('/MSRP');
     });
     remoteSdp.attributes = remoteMsrpMedia.attributes;
 
