@@ -1,15 +1,15 @@
 module.exports = function(MsrpSdk) {
   // Private variables
-  var chunkReceivers = {};
-  var receiverCheckInterval = null;
-  var chunkSenders = {};
-  var activeSenders = [];
+  const chunkReceivers = {};
+  let receiverCheckInterval = null;
+  const chunkSenders = {};
+  const activeSenders = [];
 
   /**
    * Socket handler
    * @param  {Object} socket Socket
    */
-  var SocketHandler = function(socket) {
+  const SocketHandler = function(socket) {
     // Set socket encoding so we get Strings in the 'data' event
     socket.setEncoding('utf8');
 
@@ -27,10 +27,10 @@ module.exports = function(MsrpSdk) {
       traceMsrp(data);
 
       // Incoming data may include more than one MSRP message. Match messages using regex.
-      var messages = data.match(/MSRP [^]*?-{7}\S*?[$#+]/g);
+      const messages = data.match(/MSRP [^]*?-{7}\S*?[$#+]/g);
       messages.forEach(function(message) {
         // Parse each message
-        var parsedMessage = MsrpSdk.parseMessage(message);
+        const parsedMessage = MsrpSdk.parseMessage(message);
         if (!parsedMessage) {
           MsrpSdk.Logger.warn(`[MSRP SocketHandler] Unable to parse incoming message. Message was discarded. Message: ${message}`);
           return;
@@ -78,7 +78,7 @@ module.exports = function(MsrpSdk) {
         return;
       }
 
-      var sender = new MsrpSdk.ChunkSender(routePaths, message.body, message.contentType);
+      const sender = new MsrpSdk.ChunkSender(routePaths, message.body, message.contentType);
 
       // Logic for keeping track of sent heartbeats
       if (session && message.contentType === 'text/x-msrp-heartbeat') {
@@ -105,15 +105,15 @@ module.exports = function(MsrpSdk) {
    */
   function handleIncomingRequest(request, socket) {
     // Retrieve Session and other needed parameters
-    var toUri = new MsrpSdk.URI(request.toPath[0]);
-    var fromUri = new MsrpSdk.URI(request.fromPath[0]);
+    const toUri = new MsrpSdk.URI(request.toPath[0]);
+    const fromUri = new MsrpSdk.URI(request.fromPath[0]);
     if (!toUri || !fromUri) {
       // If To-Path or From-Path is malformed return 400 BAD REQUEST
       MsrpSdk.Logger.warn('[MSRP SocketHandler] Error while handling incoming request: 400 BAD REQUEST');
       sendResponse(request, socket, request.toPath[0], MsrpSdk.Status.BAD_REQUEST);
       return;
     }
-    var session = MsrpSdk.SessionController.getSession(toUri.sessionId);
+    const session = MsrpSdk.SessionController.getSession(toUri.sessionId);
 
     // Check if the session exists
     if (!session) {
@@ -123,9 +123,16 @@ module.exports = function(MsrpSdk) {
       return;
     }
 
-    // Set session socket if needed
+    // Set session socket if there is no current socket set
     if (!session.socket || session.socket.destroyed) {
       session.setSocket(socket);
+    }
+
+    // If there is a socket in use, but a new socket is connected, add a listener so the new socket is used as soon as the current socket is closed
+    if (socket.remoteAddress !== session.socket.remoteAddress || socket.remotePort !== session.socket.remotePort) {
+      session.socket.on('close', function(hadError) {
+        session.setSocket(socket);
+      });
     }
 
     // Check if remote endpoint shouldn't be sending messages because of the recvonly attribute
@@ -147,10 +154,10 @@ module.exports = function(MsrpSdk) {
 
       // Non-chunked messages
       if (request.byteRange.start === 1 && request.continuationFlag === MsrpSdk.Message.Flag.end) {
-        // Emit 'message' event. Do not emit it for heartbeat messages or bodyless messages.
-        var isHeartbeatMessage = (request.contentType === 'text/x-msrp-heartbeat');
-        var isBodylessMessage = (!request.body && !request.contentType);
-        if (!isHeartbeatMessage && !isBodylessMessage) {
+        // Emit 'message' event. Do not emit it for heartbeat messages or bodiless messages.
+        const isHeartbeatMessage = (request.contentType === 'text/x-msrp-heartbeat');
+        const isBodilessMessage = (!request.body && !request.contentType);
+        if (!isHeartbeatMessage && !isBodilessMessage) {
           session.emit('message', request, session);
         }
         // Return successful response: 200 OK
@@ -159,7 +166,7 @@ module.exports = function(MsrpSdk) {
       }
 
       // Chunked messages
-      var messageId = request.messageId;
+      const messageId = request.messageId;
       if (!messageId) {
         // Without message ID we are unable to piece the chunked message back together, return 400 BAD REQUEST
         sendResponse(request, socket, toUri.uri, MsrpSdk.Status.BAD_REQUEST);
@@ -207,7 +214,7 @@ module.exports = function(MsrpSdk) {
       }
 
       // If it is the last chunk, parse the message body and clean up the receiver
-      var buffer = chunkReceivers[messageId].buffer;
+      const buffer = chunkReceivers[messageId].buffer;
       delete chunkReceivers[messageId];
       request.body = buffer.toString('utf-8');
       // Emit 'message' event including the complete message
@@ -229,11 +236,11 @@ module.exports = function(MsrpSdk) {
    */
   function handleIncomingResponse(response) {
     // Retrieve Session
-    var toUri = new MsrpSdk.URI(response.toPath[0]);
-    var session = MsrpSdk.SessionController.getSession(toUri.sessionId);
+    const toUri = new MsrpSdk.URI(response.toPath[0]);
+    const session = MsrpSdk.SessionController.getSession(toUri.sessionId);
 
     // Check if it is a heartbeat response and handle it as needed
-    var isHeartbeatResponse = response.tid && session && session.heartbeatsTransIds[response.tid];
+    const isHeartbeatResponse = response.tid && session && session.heartbeatsTransIds[response.tid];
     if (isHeartbeatResponse) {
       if (response.status === 200) {
         // If the response is 200OK, clear all the stored heartbeats
@@ -255,14 +262,14 @@ module.exports = function(MsrpSdk) {
    */
   function incomingReport(report) {
     // Retrieve message ID
-    var messageId = report.messageId;
+    const messageId = report.messageId;
     if (!messageId) {
       MsrpSdk.Logger.error('[MSRP SocketHandler] Invalid REPORT: No message ID');
       return;
     }
 
     // Check whether this is for a chunk sender first
-    var sender = chunkSenders[messageId];
+    const sender = chunkSenders[messageId];
     if (!sender) {
       MsrpSdk.Logger.error('[MSRP SocketHandler] Invalid REPORT: Unknown message ID');
       // Silently ignore, as suggested in 4975 section 7.1.2
@@ -295,16 +302,16 @@ module.exports = function(MsrpSdk) {
    * @param  {Number} status  Status to be included in the report
    */
   function sendReport(socket, session, req, status) {
-    var statusHeader = ['000', status, MsrpSdk.StatusComment[status]].join(' ');
-    var report = new MsrpSdk.Message.OutgoingRequest(session, 'REPORT');
+    const statusHeader = ['000', status, MsrpSdk.StatusComment[status]].join(' ');
+    const report = new MsrpSdk.Message.OutgoingRequest(session, 'REPORT');
     report.addHeader('message-id', req.messageId);
     report.addHeader('status', statusHeader);
 
     if (req.byteRange || req.continuationFlag === MsrpSdk.Message.Flag.continued) {
       // A REPORT Byte-Range will be required
-      var start = 1;
-      var end = -1;
-      var total = -1;
+      let start = 1;
+      let end = -1;
+      let total = -1;
 
       if (req.byteRange) {
         // Don't trust the range end
@@ -333,7 +340,7 @@ module.exports = function(MsrpSdk) {
       };
     }
 
-    var encodeMsg = report.encode();
+    const encodeMsg = report.encode();
     socket.write(encodeMsg);
     traceMsrp(encodeMsg);
   }
@@ -344,9 +351,9 @@ module.exports = function(MsrpSdk) {
   function sendRequests() {
     while (activeSenders.length > 0) {
       // Use first sender in list
-      var sender = activeSenders[0].sender;
-      var socket = activeSenders[0].socket;
-      var cb = activeSenders[0].cb;
+      const sender = activeSenders[0].sender;
+      const socket = activeSenders[0].socket;
+      const cb = activeSenders[0].cb;
 
       // Abort sending?
       if (sender.aborted && sender.remoteAbort) {
@@ -355,8 +362,8 @@ module.exports = function(MsrpSdk) {
       }
 
       // Retrieve and encode next chunk
-      var msg = sender.getNextChunk();
-      var encodeMsg = msg.encode();
+      const msg = sender.getNextChunk();
+      const encodeMsg = msg.encode();
       // Check socket availability before writing
       if (!socket || socket.destroyed) {
         MsrpSdk.Logger.error('[MSRP SocketHandler] Cannot send message. Socket unavailable.');
@@ -395,8 +402,8 @@ module.exports = function(MsrpSdk) {
     }
 
     // Write message to socket
-    var msg = new MsrpSdk.Message.OutgoingResponse(req, toUri, status);
-    var encodeMsg = msg.encode();
+    const msg = new MsrpSdk.Message.OutgoingResponse(req, toUri, status);
+    const encodeMsg = msg.encode();
     socket.write(encodeMsg, function() {
       // After sending the message, if request has header 'success-report', send back a report
       if (req.getHeader('failure-report') === 'yes') {
@@ -418,14 +425,16 @@ module.exports = function(MsrpSdk) {
   function startChunkReceiverPoll() {
     if (!receiverCheckInterval) {
       receiverCheckInterval = setInterval(function() {
-        var now = new Date().getTime();
-        var timeout = 30 * 1000; // 30 seconds
-        for (var messageId in chunkReceivers) {
-          var receiver = chunkReceivers[messageId];
-          if (now - receiver.lastReceive > timeout) {
-            // Clean up the receiver
-            receiver.abort();
-            delete chunkReceivers[messageId];
+        const now = new Date().getTime();
+        const timeout = 30 * 1000; // 30 seconds
+        for (const messageId in chunkReceivers) {
+          if (chunkReceivers.hasOwnProperty(messageId)) {
+            const receiver = chunkReceivers[messageId];
+            if (now - receiver.lastReceive > timeout) {
+              // Clean up the receiver
+              receiver.abort();
+              delete chunkReceivers[messageId];
+            }
           }
         }
         // Stop the receiver poll when done receiving

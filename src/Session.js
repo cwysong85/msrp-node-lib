@@ -192,7 +192,7 @@ module.exports = function(MsrpSdk) {
     // If we are updating an existing session, enable updated flag and close existing socket when needed
     if (session.remoteSdp) {
       session.updated = true;
-      session.reinvite = true;
+      session.reinvite = true; // Deprecated
       if (session.socket) {
         if (remoteSdp.attributes.path !== session.remoteSdp.attributes.path) {
           MsrpSdk.Logger.debug(`[MSRP Session] Remote path updated: ${session.remoteSdp.attributes.path.join(' ')} -> ${remoteSdp.attributes.path.join(' ')}`);
@@ -396,7 +396,7 @@ module.exports = function(MsrpSdk) {
             }
           });
         } catch (error) {
-          MsrpSdk.Logger.error(`[MSRP Session] An error ocurred while sending the initial bodyless MSRP message: ${error.toString()}`);
+          MsrpSdk.Logger.error(`[MSRP Session] An error ocurred while sending the initial bodiless MSRP message: ${error.toString()}`);
         }
       });
     }

@@ -1,14 +1,14 @@
 // Dependencies
-var net = require('net');
-var util = require('util');
-var EventEmitter = require('events').EventEmitter;
+const net = require('net');
+const util = require('util');
+const EventEmitter = require('events').EventEmitter;
 
 module.exports = function(MsrpSdk) {
   /**
    * MSRP server
    * @property server MSRP server
    */
-  var Server = function() {
+  const Server = function() {
     this.server = net.createServer(function(socket) {
       new MsrpSdk.SocketHandler(socket);
     });
@@ -20,9 +20,9 @@ module.exports = function(MsrpSdk) {
    * @param  {Function} callback Callback function
    */
   Server.prototype.start = function(callback) {
-    var server = this;
+    const server = this;
     server.server.listen(MsrpSdk.Config.port, MsrpSdk.Config.host, function() {
-      var serverAddress = server.server.address();
+      const serverAddress = server.server.address();
       MsrpSdk.Logger.info(`[MSRP Server] MSRP TCP server listening on ${serverAddress.address}:${serverAddress.port}`);
       if (MsrpSdk.Config.traceMsrp) {
         MsrpSdk.Logger.info('[MSRP Server] MSRP tracing enabled');
@@ -35,6 +35,8 @@ module.exports = function(MsrpSdk) {
       if (callback) {
         callback(error);
       }
+    }).on('connection', function(socket) {
+      MsrpSdk.Logger.debug(`[MSRP Server] Socket connected. Remote address: ${socket.remoteAddress}:${socket.remotePort}`);
     });
   };
 
