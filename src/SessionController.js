@@ -8,7 +8,7 @@ module.exports = function(MsrpSdk) {
    * Session controller
    */
   var SessionController = function() {
-    this.sessions = []; // Sessions array
+    this.sessionsMap = new Map();
   };
   util.inherits(SessionController, EventEmitter);
 
@@ -20,7 +20,8 @@ module.exports = function(MsrpSdk) {
     var sessionController = this;
     var session = new MsrpSdk.Session();
     forwardSessionEvents(session, sessionController);
-    sessionController.sessions.push(session);
+    sessionController.sessionsMap.set(session.sid, session);
+    MsrpSdk.Logger.info(`[MSRP SessionController] Created new session with sid=${session.sid}. Total active sessions: ${sessionController.sessionsMap.size}`);
     return session;
   };
 
@@ -31,9 +32,7 @@ module.exports = function(MsrpSdk) {
    */
   SessionController.prototype.getSession = function(sessionId) {
     var sessionController = this;
-    return sessionController.sessions.find(function(session) {
-      return session.sid === sessionId;
-    });
+    return sessionController.sessionsMap.get(sessionId);
   };
 
   /**
@@ -42,10 +41,24 @@ module.exports = function(MsrpSdk) {
    */
   SessionController.prototype.removeSession = function(session) {
     var sessionController = this;
-    if (sessionController.sessions.includes(session)) {
-      sessionController.sessions.splice(sessionController.sessions.indexOf(session), 1);
-    }
+    sessionController.sessionsMap.delete(session.sid);
     session.end();
+    MsrpSdk.Logger.info(`[MSRP SessionController] Ended session with sid=${session.sid}. Total active sessions: ${sessionController.sessionsMap.size}`);
+  };
+
+  /**
+   * Checks if the socket for the given session is used by another session.
+   * @param  {Session} session Session
+   * @returns {boolean} Returns true if socket is reused
+   */
+  SessionController.prototype.isSocketReused = function(session) {
+    var sessionController = this;
+    for (const sessionItem of sessionController.sessionsMap.values()) {
+      if (sessionItem !== session && sessionItem.socket === session.socket) {
+        return true;
+      }
+    }
+    return false;
   };
 
   /**
@@ -73,7 +86,6 @@ module.exports = function(MsrpSdk) {
       sessionController.emit('update', session);
     });
 
-
     // Socket events
     session.on('socketClose', function(hadError, session) {
       sessionController.emit('socketClose', hadError, session);
@@ -95,7 +107,6 @@ module.exports = function(MsrpSdk) {
     session.on('socketTimeout', function(session) {
       sessionController.emit('socketTimeout', session);
     });
-
 
     // Heartbeats events
     session.on('heartbeatFailure', function(session) {

@@ -279,9 +279,7 @@ module.exports = function(MsrpSdk) {
     var session = this;
     if (session.socket) {
       // Check if the session socket is being reused by other session
-      var isSocketReused = MsrpSdk.SessionController.sessions.filter(function(sessionItem) {
-        return sessionItem.socket === session.socket;
-      }).length > 1;
+      var isSocketReused = MsrpSdk.SessionController.isSocketReused(session);
 
       // Close the socket if it is not being reused by other session
       if (!isSocketReused) {

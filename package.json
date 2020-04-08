@@ -12,7 +12,7 @@
     "url": "https://github.com/cwysong85/msrp-node-lib"
   },
   "engines": {
-    "node": ">=0.8"
+    "node": ">=10.0.0"
   },
   "dependencies": {
     "portfinder": "^1.0.20"
