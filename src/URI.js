@@ -81,7 +81,7 @@ module.exports = function(MsrpSdk) {
     if (typeof uri === 'string' || uri instanceof String) {
       uri = new MsrpSdk.URI(uri);
     }
-    if (!uri instanceof Object) {
+    if (!(uri instanceof Object)) {
       return false;
     }
     if (uri.secure !== this.secure) {

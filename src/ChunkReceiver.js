@@ -12,7 +12,7 @@ module.exports = function(MsrpSdk) {
    * @private
    */
   var ChunkReceiver = function(firstChunk, bufferSize) {
-    if (!firstChunk || !firstChunk instanceof MsrpSdk.Message.Request) {
+    if (!firstChunk || !(firstChunk instanceof MsrpSdk.Message.Request)) {
       throw new TypeError('Missing or unexpected parameter');
     }
 

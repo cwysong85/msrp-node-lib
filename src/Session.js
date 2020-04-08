@@ -106,11 +106,11 @@ module.exports = function(MsrpSdk) {
     // Origin
     localSdp.origin.id = MsrpSdk.Util.dateToNtpTime(new Date());
     localSdp.origin.version = localSdp.origin.id;
-    localSdp.origin.address = MsrpSdk.Config.host;
+    localSdp.origin.address = MsrpSdk.Config.signalingHost;
     // Session-name
     localSdp.sessionName = MsrpSdk.Config.sessionName;
     // Connection address
-    localSdp.connection.address = MsrpSdk.Config.host;
+    localSdp.connection.address = MsrpSdk.Config.signalingHost;
     // Accept-types
     localSdp.addAttribute('accept-types', MsrpSdk.Config.acceptTypes);
     // Setup
@@ -134,7 +134,7 @@ module.exports = function(MsrpSdk) {
     getAssignedPort(localSdp.attributes.setup[0])
       .then(function(assignedPort) {
         // Path
-        var path = 'msrp://' + MsrpSdk.Config.host + ':' + assignedPort + '/' + session.sid + ';tcp';
+        var path = 'msrp://' + MsrpSdk.Config.signalingHost + ':' + assignedPort + '/' + session.sid + ';tcp';
         localSdp.addAttribute('path', path);
         // Port
         localSdp.media.push('message ' + assignedPort + ' TCP/MSRP *');

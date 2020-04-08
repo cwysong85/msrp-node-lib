@@ -91,8 +91,9 @@ module.exports = function(MsrpSdk) {
     }
 
     line = lines.shift();
-    if (line.substr(0, 2) !== 'o=' ||
-      !(this.origin = new MsrpSdk.Sdp.Origin(line.substr(2)))) {
+    if (line.substr(0, 2) === 'o=') {
+      this.origin = new MsrpSdk.Sdp.Origin(line.substr(2));
+    } else {
       MsrpSdk.Logger.warn('Unexpected SDP origin: ' + line);
       return false;
     }

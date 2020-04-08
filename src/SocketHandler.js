@@ -81,7 +81,7 @@ module.exports = function(MsrpSdk) {
       const sender = new MsrpSdk.ChunkSender(routePaths, message.body, message.contentType);
 
       // Logic for keeping track of sent heartbeats
-      if (session && message.contentType === 'text/x-msrp-heartbeat') {
+      if (message.contentType === 'text/x-msrp-heartbeat') {
         session.heartbeatsTransIds[sender.nextTid] = Date.now();
         MsrpSdk.Logger.debug(`[MSRP SocketHandler] MSRP heartbeat sent to ${sender.session.toPath} (tid: ${sender.nextTid})`);
       }

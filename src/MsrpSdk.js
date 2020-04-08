@@ -1,8 +1,12 @@
 var MsrpSdk = {};
 
-module.exports = function(config, logger) {
+module.exports = function(config = {}, logger = null) {
 
   // Set configuration
+  config.port = config.port || 2855;
+  config.host = config.host || '127.0.0.1';
+  config.signalingHost = config.signalingHost || config.host;
+
   MsrpSdk.Config = config;
   MsrpSdk.Logger = logger || console;
 
