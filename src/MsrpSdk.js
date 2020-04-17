@@ -1,6 +1,9 @@
-var MsrpSdk = {};
+/* eslint-disable no-console */
+'use strict';
 
-module.exports = function(config = {}, logger = null) {
+const MsrpSdk = {};
+
+module.exports = function (config = {}, logger = null) {
 
   // Set configuration
   config.port = config.port || 2855;
@@ -11,7 +14,7 @@ module.exports = function(config = {}, logger = null) {
   MsrpSdk.Logger = logger || console;
 
   if (!MsrpSdk.Logger.warn) {
-    if (typeof MsrpSdk.Logger.warning === "function") {
+    if (typeof MsrpSdk.Logger.warning === 'function') {
       MsrpSdk.Logger.warn = MsrpSdk.Logger.warning;
     } else {
       MsrpSdk.Logger.warn = console.warn;

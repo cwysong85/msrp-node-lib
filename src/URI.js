@@ -1,5 +1,7 @@
-module.exports = function(MsrpSdk) {
-  var URI = function(uri) {
+'use strict';
+
+module.exports = function (MsrpSdk) {
+  const URI = function (uri) {
     this.secure = false;
     this.user = null;
     this.authority = '';
@@ -11,14 +13,14 @@ module.exports = function(MsrpSdk) {
       this.parse(uri);
     }
   };
-  URI.prototype.parse = function(uri) {
-    var colonIndex = uri.indexOf('://'),
-      scheme, atIndex, portSepIndex, pathIndex, semicolonIndex;
+
+  URI.prototype.parse = function (uri) {
+    const colonIndex = uri.indexOf('://');
     if (colonIndex === -1) {
-      throw new TypeError('Invalid MSRP URI: ' + uri);
+      throw new TypeError(`Invalid MSRP URI: ${uri}`);
     }
     // Extract the scheme first
-    scheme = uri.substring(0, colonIndex);
+    const scheme = uri.substring(0, colonIndex);
     switch (scheme.toLowerCase()) {
       case 'msrp':
         this.secure = false;
@@ -27,37 +29,38 @@ module.exports = function(MsrpSdk) {
         this.secure = true;
         break;
       default:
-        throw new TypeError('Invalid MSRP URI (unknown scheme): ' + uri);
+        throw new TypeError(`Invalid MSRP URI (unknown scheme): ${uri}`);
     }
     // Start by assuming that the authority is everything between "://" and "/"
-    pathIndex = uri.indexOf('/', colonIndex + 3);
+    const pathIndex = uri.indexOf('/', colonIndex + 3);
     if (pathIndex === -1) {
-      throw new TypeError('Invalid MSRP URI (no session ID): ' + uri);
+      throw new TypeError(`Invalid MSRP URI (no session ID): ${uri}`);
     }
     this.authority = uri.substring(colonIndex + 3, pathIndex);
     // If there's an "@" symbol in the authority, extract the user
-    atIndex = this.authority.indexOf('@');
+    const atIndex = this.authority.indexOf('@');
     if (atIndex !== -1) {
       this.user = this.authority.substr(0, atIndex);
       this.authority = this.authority.substr(atIndex + 1);
     }
     // If there's an ":" symbol in the authority, extract the port
-    portSepIndex = this.authority.indexOf(':');
+    const portSepIndex = this.authority.indexOf(':');
     if (portSepIndex !== -1) {
       this.port = this.authority.substr(portSepIndex + 1);
       this.authority = this.authority.substr(0, portSepIndex);
     }
     // Finally, separate the session ID from the transport
-    semicolonIndex = uri.indexOf(';', colonIndex + 3);
+    const semicolonIndex = uri.indexOf(';', colonIndex + 3);
     if (semicolonIndex === -1) {
-      throw new TypeError('Invalid MSRP URI (no transport): ' + uri);
+      throw new TypeError(`Invalid MSRP URI (no transport): ${uri}`);
     }
     this.sessionId = uri.substring(pathIndex + 1, semicolonIndex);
     this.transport = uri.substring(semicolonIndex + 1);
     return true;
   };
-  URI.prototype.toString = function() {
-    var uri = 'msrp';
+
+  URI.prototype.toString = function () {
+    let uri = 'msrp';
     if (this.uri) {
       // Return the cached URI
       return this.uri;
@@ -67,17 +70,18 @@ module.exports = function(MsrpSdk) {
     }
     uri += '://';
     if (this.user) {
-      uri += this.user + '@';
+      uri += `${this.user}@`;
     }
     uri += this.authority;
     if (this.port) {
-      uri += ':' + this.port;
+      uri += `:${this.port}`;
     }
-    uri += '/' + this.sessionId + ';' + this.transport;
+    uri += `/${this.sessionId};${this.transport}`;
     this.uri = uri;
     return uri;
   };
-  URI.prototype.equals = function(uri) {
+
+  URI.prototype.equals = function (uri) {
     if (typeof uri === 'string' || uri instanceof String) {
       uri = new MsrpSdk.URI(uri);
     }

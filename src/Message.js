@@ -1,12 +1,15 @@
-module.exports = function(MsrpSdk) {
-  var lineEnd = '\r\n';
+'use strict';
+
+// eslint-disable-next-line max-lines-per-function
+module.exports = function (MsrpSdk) {
+  const lineEnd = '\r\n';
 
   /**
    * Encapsulates all of the MSRP message classes.
    * @namespace Message
    * @private
    */
-  var Message = {};
+  const Message = {};
 
   Message.Flag = {
     continued: '+',
@@ -19,15 +22,15 @@ module.exports = function(MsrpSdk) {
    * @class
    * @private
    */
-  Message.Message = function() {};
-  Message.Message.prototype.initMessage = function() {
+  Message.Message = function () {};
+  Message.Message.prototype.initMessage = function () {
     this.tid = null;
     this.toPath = [];
     this.fromPath = [];
     this.headers = {};
     this.continuationFlag = MsrpSdk.Message.Flag.end;
   };
-  Message.Message.prototype.addHeader = function(name, value) {
+  Message.Message.prototype.addHeader = function (name, value) {
     name = MsrpSdk.Util.normaliseHeader(name);
 
     // Standard headers are stored in their own properties
@@ -51,7 +54,7 @@ module.exports = function(MsrpSdk) {
       this.headers[name] = [value];
     }
   };
-  Message.Message.prototype.getHeader = function(name) {
+  Message.Message.prototype.getHeader = function (name) {
     name = MsrpSdk.Util.normaliseHeader(name);
     if (name in this.headers) {
       if (this.headers[name].length > 1) {
@@ -61,10 +64,10 @@ module.exports = function(MsrpSdk) {
     }
     return null;
   };
-  Message.Message.prototype.getEndLineNoFlag = function() {
-    return '-------' + this.tid;
+  Message.Message.prototype.getEndLineNoFlag = function () {
+    return `-------${this.tid}`;
   };
-  Message.Message.prototype.getEndLine = function() {
+  Message.Message.prototype.getEndLine = function () {
     return this.getEndLineNoFlag().concat(this.continuationFlag, lineEnd);
   };
 
@@ -74,20 +77,20 @@ module.exports = function(MsrpSdk) {
    * @extends CrocMSRP.Message.Message
    * @private
    */
-  Message.Request = function() {};
+  Message.Request = function () {};
   Message.Request.prototype = new Message.Message();
   Message.Request.prototype.constructor = Message.Request;
-  Message.Request.prototype.initRequest = function() {
+  Message.Request.prototype.initRequest = function () {
     this.initMessage();
     this.method = null;
     this.contentType = null;
     this.body = null;
   };
-  Message.Request.prototype.addBody = function(type, body) {
+  Message.Request.prototype.addBody = function (type, body) {
     this.contentType = type;
     this.body = body;
   };
-  Message.Request.prototype.addTextBody = function(text) {
+  Message.Request.prototype.addTextBody = function (text) {
     this.addBody('text/plain', text);
   };
 
@@ -97,10 +100,10 @@ module.exports = function(MsrpSdk) {
    * @extends CrocMSRP.Message.Message
    * @private
    */
-  Message.Response = function() {};
+  Message.Response = function () {};
   Message.Response.prototype = new Message.Message();
   Message.Response.prototype.constructor = Message.Response;
-  Message.Response.prototype.initResponse = function() {
+  Message.Response.prototype.initResponse = function () {
     this.initMessage();
     this.status = null;
     this.comment = null;
@@ -112,14 +115,14 @@ module.exports = function(MsrpSdk) {
    * @extends CrocMSRP.Message.Request
    * @private
    */
-  Message.OutgoingRequest = function(session, method) {
+  Message.OutgoingRequest = function (session, method) {
     if (!session || !method) {
       throw new TypeError('Required parameter is missing');
     }
 
     this.initRequest();
-    
-    this.tid = this.tid === null ? MsrpSdk.Util.newTID() : this.tid; 
+
+    this.tid = this.tid === null ? MsrpSdk.Util.newTID() : this.tid;
     this.method = method;
 
     this.toPath = session.toPath;
@@ -130,9 +133,10 @@ module.exports = function(MsrpSdk) {
   };
   Message.OutgoingRequest.prototype = new Message.Request();
   Message.OutgoingRequest.prototype.constructor = Message.OutgoingRequest;
-  Message.OutgoingRequest.prototype.encode = function() {
-    var msg = '',
-      name, type = this.contentType,
+  Message.OutgoingRequest.prototype.encode = function () {
+    let msg = '',
+      name,
+      type = this.contentType,
       end = this.getEndLine();
 
     if (this.body && (this.body instanceof String || typeof this.body === 'string')) {
@@ -148,13 +152,15 @@ module.exports = function(MsrpSdk) {
     msg = msg.concat('From-Path: ', this.fromPath.join(' '), lineEnd);
 
     if (this.byteRange) {
-      var r = this.byteRange,
-        total = (r.total < 0 ? '*' : r.total);
-      this.addHeader('byte-range', r.start + '-' + r.end + '/' + total);
+      const r = this.byteRange;
+      const total = r.total < 0 ? '*' : r.total;
+      this.addHeader('byte-range', `${r.start}-${r.end}/${total}`);
     }
 
     for (name in this.headers) {
-      msg = msg.concat(name, ': ', this.headers[name].join(' '), lineEnd);
+      if (this.headers.hasOwnProperty(name)) {
+        msg = msg.concat(name, ': ', this.headers[name].join(' '), lineEnd);
+      }
     }
 
     if (type && this.body) {
@@ -168,8 +174,7 @@ module.exports = function(MsrpSdk) {
       if (this.body instanceof String || typeof this.body === 'string') {
         msg = msg.concat(this.body, lineEnd, end);
       } else {
-        // Turn the entire message into a blob, encapsulating the body
-        msg = new Blob([msg, this.body, lineEnd, end]);
+        msg = msg.concat(this.body.toString(), lineEnd, end);
       }
     } else {
       msg += end;
@@ -184,9 +189,9 @@ module.exports = function(MsrpSdk) {
    * @extends CrocMSRP.Message.Request
    * @private
    */
-  Message.IncomingRequest = function(tid, method) {
+  Message.IncomingRequest = function (tid, method) {
     if (!tid || !method) {
-      return null;
+      return;
     }
 
     this.initRequest();
@@ -226,9 +231,9 @@ module.exports = function(MsrpSdk) {
    * @extends CrocMSRP.Message.Response
    * @private
    */
-  Message.OutgoingResponse = function(request, localUri, status) {
+  Message.OutgoingResponse = function (request, localUri, status) {
     if (!request || !localUri) {
-      return null;
+      return;
     }
 
     this.initResponse();
@@ -246,8 +251,8 @@ module.exports = function(MsrpSdk) {
   };
   Message.OutgoingResponse.prototype = new Message.Response();
   Message.OutgoingResponse.prototype.constructor = Message.OutgoingResponse;
-  Message.OutgoingResponse.prototype.encode = function() {
-    var msg = '',
+  Message.OutgoingResponse.prototype.encode = function () {
+    let msg = '',
       name;
 
     msg = msg.concat('MSRP ', this.tid, ' ', this.status);
@@ -260,7 +265,9 @@ module.exports = function(MsrpSdk) {
     msg = msg.concat('From-Path: ', this.fromPath.join(' '), lineEnd);
 
     for (name in this.headers) {
-      msg = msg.concat(name, ': ', this.headers[name].join(' '), lineEnd);
+      if (this.headers.hasOwnProperty(name)) {
+        msg = msg.concat(name, ': ', this.headers[name].join(' '), lineEnd);
+      }
     }
 
     return msg + this.getEndLine();
@@ -272,9 +279,9 @@ module.exports = function(MsrpSdk) {
    * @extends CrocMSRP.Message.Response
    * @private
    */
-  Message.IncomingResponse = function(tid, status, comment) {
+  Message.IncomingResponse = function (tid, status, comment) {
     if (!tid || !status) {
-      return null;
+      return;
     }
 
     this.initResponse();

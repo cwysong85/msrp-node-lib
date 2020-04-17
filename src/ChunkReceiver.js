@@ -1,4 +1,6 @@
-module.exports = function(MsrpSdk) {
+'use strict';
+
+module.exports = function (MsrpSdk) {
 
   /**
    * Creates a new ChunkReceiver object to handle an incoming chunked message.
@@ -11,7 +13,7 @@ module.exports = function(MsrpSdk) {
    * disk).
    * @private
    */
-  var ChunkReceiver = function(firstChunk, bufferSize) {
+  const ChunkReceiver = function (firstChunk, bufferSize) {
     if (!firstChunk || !(firstChunk instanceof MsrpSdk.Message.Request)) {
       throw new TypeError('Missing or unexpected parameter');
     }
@@ -47,8 +49,8 @@ module.exports = function(MsrpSdk) {
    * if the transfer should be aborted.
    * @private
    */
-  ChunkReceiver.prototype.processChunk = function(chunk) {
-    var chunkBody, chunkSize,
+  ChunkReceiver.prototype.processChunk = function (chunk) {
+    let chunkBody, chunkSize,
       nextStart = this.size + this.bufferedBytes + 1;
 
     if (this.aborted) {
@@ -58,7 +60,7 @@ module.exports = function(MsrpSdk) {
     }
 
     if (chunk.messageId !== this.firstChunk.messageId) {
-      MsrpSdk.Logger.error('Chunk has wrong message ID!');
+      MsrpSdk.Logger.error(`Chunk has wrong message ID - First Message:${this.firstChunk.messageId}, This Message:${chunk.messageId}`);
       return false;
     }
 
@@ -73,8 +75,8 @@ module.exports = function(MsrpSdk) {
     } else {
       // Boo. Text frame: turn it back into UTF-8 and cross your fingers
       // that the resulting bytes are what they should be.
-      if(chunk.body === null) {
-        chunk.body = "";
+      if (chunk.body === null) {
+        chunk.body = '';
       }
       chunkBody = new Buffer(chunk.body);
       chunkSize = chunkBody.length;
@@ -102,7 +104,7 @@ module.exports = function(MsrpSdk) {
 
       // Check whether there are any incontiguous chunks we can now append
       while (!MsrpSdk.Util.isEmpty(this.incontiguousChunks)) {
-        var nextChunk = this.incontiguousChunks[nextStart];
+        const nextChunk = this.incontiguousChunks[nextStart];
         if (!nextChunk) {
           // There's a gap: stop appending
           break;
@@ -132,7 +134,7 @@ module.exports = function(MsrpSdk) {
     } else {
       // Duplicate chunk: RFC 4975 section 7.3.1 paragraph 3 suggests
       // that the last chunk received SHOULD take precedence.
-      var array = [];
+      const array = [];
 
       // Write out the buffer in case the new chunk overlaps
       writeToBuffer(this);
@@ -160,7 +162,7 @@ module.exports = function(MsrpSdk) {
    * message has been aborted. False if we still expect further chunks.
    * @private
    */
-  ChunkReceiver.prototype.isComplete = function() {
+  ChunkReceiver.prototype.isComplete = function () {
     return this.aborted || (this.size === this.totalBytes);
   };
 
@@ -169,7 +171,7 @@ module.exports = function(MsrpSdk) {
    * error will be returned when we receive the next chunk.
    * @private
    */
-  ChunkReceiver.prototype.abort = function() {
+  ChunkReceiver.prototype.abort = function () {
     this.aborted = true;
   };
 

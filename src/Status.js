@@ -1,4 +1,6 @@
-module.exports = function(MsrpSdk) {
+'use strict';
+
+module.exports = function (MsrpSdk) {
   /** @constant */
   MsrpSdk.Status = {
     OK: 200,

@@ -50,7 +50,7 @@ msrpServer.start();
 
 Socket connected event and MSRP session events:
 ```
-msrpServer.on('socketConnect', function(session) {
+msrpServer.on('socketSet', function(session) {
     console.log('MSRP socket connected!');
 
     // create a session

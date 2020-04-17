@@ -1,65 +1,79 @@
-// Dependencies
-var util = require('util');
-var EventEmitter = require('events').EventEmitter;
+'use strict';
 
-module.exports = function(MsrpSdk) {
+// Dependencies
+const { EventEmitter } = require('events');
+
+module.exports = function (MsrpSdk) {
 
   /**
    * Session controller
    */
-  var SessionController = function() {
-    this.sessionsMap = new Map();
-  };
-  util.inherits(SessionController, EventEmitter);
+  class SessionController extends EventEmitter {
+    constructor() {
+      super();
+      this.sessionsMap = new Map();
+    }
 
-  /**
-   * Creates a session
-   * @return {Session} Session
-   */
-  SessionController.prototype.createSession = function() {
-    var sessionController = this;
-    var session = new MsrpSdk.Session();
-    forwardSessionEvents(session, sessionController);
-    sessionController.sessionsMap.set(session.sid, session);
-    MsrpSdk.Logger.info(`[MSRP SessionController] Created new session with sid=${session.sid}. Total active sessions: ${sessionController.sessionsMap.size}`);
-    return session;
-  };
+    /**
+     * Creates a session
+     * @return {Session} Session
+     */
+    createSession() {
+      const session = new MsrpSdk.Session();
+      this.sessionsMap.set(session.sid, session);
 
-  /**
-   * Gets a session by session ID
-   * @param  {String} sessionId Session ID
-   * @return {Session}          Session
-   */
-  SessionController.prototype.getSession = function(sessionId) {
-    var sessionController = this;
-    return sessionController.sessionsMap.get(sessionId);
-  };
+      session.on('end', () => {
+        this.removeSession(session);
+        if (MsrpSdk.Config.forwardSessionEvents) {
+          this.emit('end', session);
+        }
+      });
 
-  /**
-   * Removes a session
-   * @param  {Session} session Session
-   */
-  SessionController.prototype.removeSession = function(session) {
-    var sessionController = this;
-    sessionController.sessionsMap.delete(session.sid);
-    session.end();
-    MsrpSdk.Logger.info(`[MSRP SessionController] Ended session with sid=${session.sid}. Total active sessions: ${sessionController.sessionsMap.size}`);
-  };
+      if (MsrpSdk.Config.forwardSessionEvents) {
+        forwardSessionEvents(session, this);
+      }
 
-  /**
-   * Checks if the socket for the given session is used by another session.
-   * @param  {Session} session Session
-   * @returns {boolean} Returns true if socket is reused
-   */
-  SessionController.prototype.isSocketReused = function(session) {
-    var sessionController = this;
-    for (const sessionItem of sessionController.sessionsMap.values()) {
-      if (sessionItem !== session && sessionItem.socket === session.socket) {
-        return true;
+      MsrpSdk.Logger.info(`[SessionController]: Created new session with sid=${session.sid}. Total active sessions: ${this.sessionsMap.size}`);
+      return session;
+    }
+
+    /**
+     * Gets a session by session ID
+     * @param  {String} sessionId Session ID
+     * @return {Session}          Session
+     */
+    getSession(sessionId) {
+      return this.sessionsMap.get(sessionId);
+    }
+
+    /**
+     * Removes a session
+     * @param  {Session} session Session
+     */
+    removeSession(session) {
+      if (this.sessionsMap.has(session.sid)) {
+        this.sessionsMap.delete(session.sid);
+        MsrpSdk.Logger.info(`[SessionController]: Removed session with sid=${session.sid}. Total active sessions: ${this.sessionsMap.size}`);
+      }
+      if (!session.ended) {
+        session.end();
       }
     }
-    return false;
-  };
+
+    /**
+     * Checks if the socket for the given session is used by another session.
+     * @param  {Session} session Session
+     * @returns {boolean} Returns true if socket is reused
+     */
+    isSocketReused(session) {
+      for (const sessionItem of this.sessionsMap.values()) {
+        if (sessionItem !== session && sessionItem.socket === session.socket) {
+          return true;
+        }
+      }
+      return false;
+    }
+  }
 
   /**
    * Helper function for forwarding a session's events to the session controller
@@ -67,53 +81,37 @@ module.exports = function(MsrpSdk) {
    * @param  {SessionController} sessionController Session controller
    */
   function forwardSessionEvents(session, sessionController) {
-    // Session events
-    session.on('end', function(session) {
-      sessionController.removeSession(session);
-      sessionController.emit('end', session);
+    session.on('message', message => {
+      sessionController.emit('message', session, message);
     });
 
-    session.on('message', function(message, session) {
-      sessionController.emit('message', message, session);
-    });
-
-    // TODO: Deprecated
-    session.on('reinvite', function(session) {
-      sessionController.emit('reinvite', session);
-    });
-
-    session.on('update', function(session) {
+    session.on('update', () => {
       sessionController.emit('update', session);
     });
 
     // Socket events
-    session.on('socketClose', function(hadError, session) {
-      sessionController.emit('socketClose', hadError, session);
-    });
-
-    // TODO: Deprecated
-    session.on('socketConnect', function(session) {
-      sessionController.emit('socketConnect', session);
-    });
-
-    session.on('socketError', function(session) {
-      sessionController.emit('socketError', session);
-    });
-
-    session.on('socketSet', function(session) {
+    session.on('socketSet', () => {
       sessionController.emit('socketSet', session);
     });
 
-    session.on('socketTimeout', function(session) {
+    session.on('socketClose', hadError => {
+      sessionController.emit('socketClose', session, hadError);
+    });
+
+    session.on('socketError', () => {
+      sessionController.emit('socketError', session);
+    });
+
+    session.on('socketTimeout', () => {
       sessionController.emit('socketTimeout', session);
     });
 
     // Heartbeats events
-    session.on('heartbeatFailure', function(session) {
+    session.on('heartbeatFailure', () => {
       sessionController.emit('heartbeatFailure', session);
     });
 
-    session.on('heartbeatTimeout', function(session) {
+    session.on('heartbeatTimeout', () => {
       sessionController.emit('heartbeatTimeout', session);
     });
   }

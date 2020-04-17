@@ -1,11 +1,13 @@
-module.exports = function(MsrpSdk) {
+'use strict';
+
+module.exports = function (MsrpSdk) {
   /**
    * Creates a new ContentType object.
    * @class Generic representation of a MIME type, along with optional
    * parameters. Provides methods to convert to and from different
    * representations.
    */
-  var ContentType = function() {
+  const ContentType = function () {
     /**
      * The MIME type.
      * @type String
@@ -27,8 +29,8 @@ module.exports = function(MsrpSdk) {
    * Parses an SDP type selector, as defined in RFC 5547.
    * @param {String} selector The selector value to parse.
    */
-  ContentType.prototype.parseSdpTypeSelector = function(selector) {
-    var position = 0,
+  ContentType.prototype.parseSdpTypeSelector = function (selector) {
+    let position = 0,
       endIndex, param, value;
 
     // Type
@@ -58,7 +60,6 @@ module.exports = function(MsrpSdk) {
       endIndex = selector.indexOf('=', position);
       if (endIndex === -1) {
         // Unexpected input
-        position = selector.length;
         return;
       }
       param = selector.slice(position, endIndex);
@@ -66,14 +67,12 @@ module.exports = function(MsrpSdk) {
 
       if (selector.charAt(position) !== '"') {
         // Unexpected input
-        position = selector.length;
         return;
       }
       position++;
       endIndex = selector.indexOf('"', position);
       if (endIndex === -1) {
         // Unexpected input
-        position = selector.length;
         return;
       }
       value = selector.slice(position, endIndex);
@@ -87,14 +86,14 @@ module.exports = function(MsrpSdk) {
    * Encodes the content type as an SDP type selector, as defined in RFC 5547.
    * @returns {String} The encoded selector value.
    */
-  ContentType.prototype.toSdpTypeSelector = function() {
-    var selector = '',
-      param;
+  ContentType.prototype.toSdpTypeSelector = function () {
+    let selector = '', param;
 
     selector = selector.concat(this.type, '/', this.subtype);
     for (param in this.params) {
-      selector = selector.concat(';', param, '="',
-        MsrpSdk.Util.encodeSdpFileName(this.params[param]), '"');
+      if (this.params.hasOwnProperty(param)) {
+        selector = selector.concat(';', param, '="', MsrpSdk.Util.encodeSdpFileName(this.params[param]), '"');
+      }
     }
 
     return selector;
@@ -105,8 +104,8 @@ module.exports = function(MsrpSdk) {
    * Note: Does not allow for unquoted white space.
    * @param {String} header The header value to parse.
    */
-  ContentType.prototype.parseContentTypeHeader = function(header) {
-    var position = 0,
+  ContentType.prototype.parseContentTypeHeader = function (header) {
+    let position = 0,
       endIndex, param, value;
 
     // Type
@@ -136,7 +135,6 @@ module.exports = function(MsrpSdk) {
       endIndex = header.indexOf('=', position);
       if (endIndex === -1) {
         // Unexpected input
-        position = header.length;
         return;
       }
       param = header.slice(position, endIndex);
@@ -147,14 +145,12 @@ module.exports = function(MsrpSdk) {
         endIndex = header.indexOf('"', position);
         if (endIndex === -1) {
           // Unexpected input
-          position = header.length;
           return;
         }
         while (header.charAt(endIndex - 1) === '\\') {
           endIndex = header.indexOf('"', endIndex + 1);
           if (endIndex === -1) {
             // Unexpected input
-            position = header.length;
             return;
           }
         }
@@ -175,14 +171,15 @@ module.exports = function(MsrpSdk) {
    * Encodes the content type as an Content-Type header, as defined in RFC 2045.
    * @returns {String} The encoded header value.
    */
-  ContentType.prototype.toContentTypeHeader = function() {
-    var header = '',
+  ContentType.prototype.toContentTypeHeader = function () {
+    let header = '',
       param;
 
     header = header.concat(this.type, '/', this.subtype);
     for (param in this.params) {
-      header = header.concat(';', param, '="',
-        MsrpSdk.Util.encodeQuotedString(this.params[param]), '"');
+      if (this.params.hasOwnProperty(param)) {
+        header = header.concat(';', param, '="', MsrpSdk.Util.encodeQuotedString(this.params[param]), '"');
+      }
     }
 
     return header;

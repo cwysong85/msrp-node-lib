@@ -1,44 +1,43 @@
+'use strict';
+
 // Dependencies
 const net = require('net');
-const util = require('util');
-const EventEmitter = require('events').EventEmitter;
+const { EventEmitter } = require('events');
 
-module.exports = function(MsrpSdk) {
+module.exports = function (MsrpSdk) {
   /**
    * MSRP server
-   * @property server MSRP server
    */
-  const Server = function() {
-    this.server = net.createServer(function(socket) {
-      new MsrpSdk.SocketHandler(socket);
-    });
-  };
-  util.inherits(Server, EventEmitter);
+  class Server extends EventEmitter {
+    constructor() {
+      super();
+      this.server = net.createServer(socket => {
+        MsrpSdk.Logger.info(`[Server]: New connection from ${socket.remoteAddress}:${socket.remotePort}`);
+        new MsrpSdk.SocketHandler(socket);
+      });
+    }
 
-  /**
-   * Starts the MSRP server
-   * @param  {Function} callback Callback function
-   */
-  Server.prototype.start = function(callback) {
-    const server = this;
-    server.server.listen(MsrpSdk.Config.port, MsrpSdk.Config.host, function() {
-      const serverAddress = server.server.address();
-      MsrpSdk.Logger.info(`[MSRP Server] MSRP TCP server listening on ${serverAddress.address}:${serverAddress.port}`);
-      if (MsrpSdk.Config.traceMsrp) {
-        MsrpSdk.Logger.info('[MSRP Server] MSRP tracing enabled');
-      }
-      if (callback) {
-        callback();
-      }
-    }).on('error', function(error) {
-      MsrpSdk.Logger.error(error);
-      if (callback) {
-        callback(error);
-      }
-    }).on('connection', function(socket) {
-      MsrpSdk.Logger.debug(`[MSRP Server] Socket connected. Remote address: ${socket.remoteAddress}:${socket.remotePort}`);
-    });
-  };
+    /**
+     * Starts the MSRP server
+     * @param  {Function} callback Callback function
+     */
+    start(callback) {
+      this.server.listen(MsrpSdk.Config.port, MsrpSdk.Config.host, () => {
+        const serverAddress = this.server.address();
+        MsrpSdk.Logger.info(`[Server]: MSRP TCP server listening on ${serverAddress.address}:${serverAddress.port}`);
+        MsrpSdk.Logger.debug(`[Server]: MSRP tracing ${MsrpSdk.Config.traceMsrp ? 'enabled' : 'disabled'}`);
+        if (callback) {
+          callback();
+        }
+      })
+        .on('error', error => {
+          MsrpSdk.Logger.error('[Server]: Failed to start MSRP server.', error);
+          if (callback) {
+            callback(error);
+          }
+        });
+    }
+  }
 
   MsrpSdk.Server = Server;
 };
