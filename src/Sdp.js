@@ -113,9 +113,6 @@ module.exports = function (MsrpSdk) {
     // Process any other optional pre-timing lines
     while (lines.length > 0 && lines[0].charAt(0) !== 't') {
       line = lines.shift();
-      if (line === lineEnd) {
-        break;
-      }
       value = line.substr(2);
 
       switch (line.substr(0, 2)) {
@@ -474,8 +471,6 @@ module.exports = function (MsrpSdk) {
   };
 
   Sdp.Media.prototype.parse = function (media) {
-    let index, aName;
-
     this.reset();
 
     const lines = media.split(lineEnd);
@@ -491,7 +486,11 @@ module.exports = function (MsrpSdk) {
     this.proto = tokens.shift();
     this.format = tokens.join(' ');
 
-    return lines.every(line => {
+    lines.forEach(line => {
+      if (!line || line === lineEnd) {
+        MsrpSdk.Logger.warn('[SDP]: Unexpected empty line in SDP (within media)');
+        return;
+      }
       let value = line.substr(2);
       switch (line.substr(0, 2)) {
         case 'i=':
@@ -499,9 +498,6 @@ module.exports = function (MsrpSdk) {
           break;
         case 'c=':
           this.connection = new MsrpSdk.Sdp.Connection(value);
-          if (!this.connection) {
-            return false;
-          }
           break;
         case 'b=':
           this.bandwidth.push(value);
@@ -510,6 +506,7 @@ module.exports = function (MsrpSdk) {
           this.key = value;
           break;
         case 'a=':
+          let aName;
           const colonIndex = value.indexOf(':');
           if (colonIndex === -1) {
             aName = value;
@@ -521,11 +518,11 @@ module.exports = function (MsrpSdk) {
           this.addAttribute(aName, value);
           break;
         default:
-          MsrpSdk.Logger.warn(`[SDP]: Unexpected type (within media): ${lines[index]}`);
-          return false;
+          MsrpSdk.Logger.warn(`[SDP]: Unexpected type (within media): ${line}`);
+          break;
       }
-      return true;
     });
+    return true;
   };
 
   Sdp.Media.prototype.toString = function () {
