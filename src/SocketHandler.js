@@ -53,8 +53,9 @@ module.exports = function (MsrpSdk) {
     });
 
     socket.on('data', data => {
-      // Send data to tracing function
-      traceMsrp(data);
+      if (MsrpSdk.Config.traceMsrp) {
+        MsrpSdk.Logger.info(`[SocketHandler]: MSRP received:\r\n${data}`);
+      }
 
       // Incoming data may include more than one MSRP message. Match messages using regex.
       const messages = data.match(/MSRP [^]*?-{7}\S*?[$#+]/g);
@@ -361,7 +362,9 @@ module.exports = function (MsrpSdk) {
 
     const encodeMsg = report.encode();
     socket.write(encodeMsg);
-    traceMsrp(encodeMsg);
+    if (MsrpSdk.Config.traceMsrp) {
+      MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+    }
   }
 
   /**
@@ -389,7 +392,9 @@ module.exports = function (MsrpSdk) {
         continue;
       }
       socket.write(encodeMsg);
-      traceMsrp(encodeMsg);
+      if (MsrpSdk.Config.traceMsrp) {
+        MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+      }
 
       // Check whether this sender has now completed
       if (sender.isSendComplete()) {
@@ -437,8 +442,9 @@ module.exports = function (MsrpSdk) {
       }
     });
 
-    // Trace MSRP message
-    traceMsrp(encodeMsg);
+    if (MsrpSdk.Config.traceMsrp) {
+      MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+    }
   }
 
   /**
@@ -466,17 +472,6 @@ module.exports = function (MsrpSdk) {
           receiverCheckInterval = null;
         }
       });
-    }
-  }
-
-  /**
-   * Helper function for tracing MSRP messages
-   * @param  {String} message MSRP message to be traced
-   */
-  function traceMsrp(message) {
-    // Check if MSRP traces are disabled
-    if (MsrpSdk.Config.traceMsrp) {
-      MsrpSdk.Logger.info(`[SocketHandler]: MSRP trace:\n${message}`);
     }
   }
 

@@ -35,6 +35,7 @@ module.exports = function (MsrpSdk) {
       this.sid = MsrpSdk.Util.newSID();
       this.localEndpoint = null;
       this.remoteEndpoints = [];
+      this.acceptTypes = [];
       this.localSdp = null;
       this.remoteSdp = null;
       this.socket = null;
@@ -56,10 +57,10 @@ module.exports = function (MsrpSdk) {
     sendMessage(body, callback, contentType) {
       // Check if the remote endpoint will accept the message by checking its SDP
       contentType = contentType || 'text/plain';
+
       // Get the wildcard type, e.g. text/*
       const wildcardContentType = contentType.replace(/\/.*$/, '/*');
-      let canSend = this.remoteSdp.attributes['accept-types'].some(acceptType =>
-        acceptType === contentType || acceptType === wildcardContentType || acceptType === '*');
+      let canSend = this.acceptTypes.some(type => type === contentType || type === wildcardContentType || type === '*');
 
       if (this.remoteSdp.attributes.sendonly || this.remoteSdp.attributes.inactive) {
         canSend = false;
@@ -204,6 +205,9 @@ module.exports = function (MsrpSdk) {
       // Update session information
       this.remoteSdp = remoteSdp;
       this.remoteEndpoints = remoteSdp.attributes.path;
+      if (remoteSdp.attributes['accept-types']) {
+        this.acceptTypes = remoteSdp.attributes['accept-types'][0].split(' ');
+      }
       this.setHasNotRan = false;
 
       // Success! Remote SDP processed

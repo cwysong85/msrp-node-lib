@@ -44,7 +44,9 @@ module.exports = function (MsrpSdk) {
       this.attributeNameOrder.push(name);
     }
     if (value && typeof value === 'string') {
-      this.attributes[name].push(...value.split(' '));
+      this.attributes[name].push(value);
+    } else if (Array.isArray(value)) {
+      this.attributes[name].push(...value);
     }
   };
 
@@ -443,7 +445,9 @@ module.exports = function (MsrpSdk) {
       this.attributeNameOrder.push(name);
     }
     if (value && typeof value === 'string') {
-      this.attributes[name] = this.attributes[name].concat(value.split(' '));
+      this.attributes[name].push(value);
+    } else if (Array.isArray(value)) {
+      this.attributes[name].push(...value);
     }
   };
 
