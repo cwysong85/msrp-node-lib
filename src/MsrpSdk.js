@@ -41,18 +41,11 @@ module.exports = function (config = {}, logger = null) {
   require('./ChunkSender.js')(MsrpSdk); // Depends on: Message, Status, Util
   require('./Parser.js')(MsrpSdk); // Depends on: Message
 
-  require('./Server.js')(MsrpSdk); // Depends on: Config, Message, SocketHandler
-  require('./Session.js')(MsrpSdk); // Depends on: Config, Message, Sdp, SocketHandler, URI, Util
-
-  require('./SessionController.js')(MsrpSdk); // Depends on: Session
-
+  require('./SessionController.js')(MsrpSdk);
   require('./SocketHandler.js')(MsrpSdk); // Depends on: Message, Parser, SessionController, Status, URI
+  require('./Session.js')(MsrpSdk); // Depends on: Config, Message, Sdp, SessionController, SocketHandler, URI, Util
 
-  // TODO:
-  // NOTE: There is a circular dependency
-  // SessionController depends on Session.
-  // Session depends on SocketHandler and SessionController.
-  // SocketHandler depends on SessionController.
+  require('./Server.js')(MsrpSdk); // Depends on: Config, Message, SocketHandler
 
   return MsrpSdk;
 };

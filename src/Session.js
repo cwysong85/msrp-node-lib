@@ -46,6 +46,8 @@ module.exports = function (MsrpSdk) {
       this.heartbeatTimeoutFunc = null;
       this.setHasNotRan = true;
       this.getHasNotRan = true;
+
+      MsrpSdk.SessionController.addSession(this);
     }
 
     /**
@@ -99,7 +101,7 @@ module.exports = function (MsrpSdk) {
       MsrpSdk.Logger.debug('[Session]: Creating local SDP...');
 
       // Create and configure local SDP
-      const localSdp = new MsrpSdk.Sdp.Session();
+      const localSdp = new MsrpSdk.Sdp();
       // Origin
       localSdp.origin.id = MsrpSdk.Util.dateToNtpTime();
       localSdp.origin.version = localSdp.origin.id;
@@ -174,7 +176,7 @@ module.exports = function (MsrpSdk) {
       MsrpSdk.Logger.debug('[Session]: Processing remote SDP...');
 
       // Parse received SDP
-      const remoteSdp = new MsrpSdk.Sdp.Session(description);
+      const remoteSdp = new MsrpSdk.Sdp(description);
 
       // Retrieve MSRP media attributes
       const remoteMsrpMedia = remoteSdp.media.find(mediaObject => mediaObject.proto.includes('/MSRP'));
@@ -295,7 +297,6 @@ module.exports = function (MsrpSdk) {
 
         // Check if the session socket is being reused by other session
         const isSocketReused = MsrpSdk.SessionController.isSocketReused(this);
-
         // Close the socket if it is not being reused by other session
         if (isSocketReused) {
           MsrpSdk.Logger.info(`[Session]: Socket for session ${this.sid} is being reused. Do not close it.`);

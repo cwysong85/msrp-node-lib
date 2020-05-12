@@ -15,11 +15,10 @@ module.exports = function (MsrpSdk) {
     }
 
     /**
-     * Creates a session
-     * @return {Session} Session
+     * Adds a new session
+     * @param {Session} Session
      */
-    createSession() {
-      const session = new MsrpSdk.Session();
+    addSession(session) {
       this.sessionsMap.set(session.sid, session);
 
       session.on('end', () => {
@@ -34,7 +33,6 @@ module.exports = function (MsrpSdk) {
       }
 
       MsrpSdk.Logger.info(`[SessionController]: Created new session with sid=${session.sid}. Total active sessions: ${this.sessionsMap.size}`);
-      return session;
     }
 
     /**

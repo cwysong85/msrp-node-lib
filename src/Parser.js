@@ -7,7 +7,7 @@ module.exports = function (MsrpSdk) {
   /**
      * Parses a raw websocket message and returns a Message object.
      * @param {String|ArrayBuffer} data Event data from the onmessage websocket event.
-     * @returns {CrocMSRP.Message.Message} Message object, or null if there an
+     * @returns {object} Message object, or null if there an
      * error is encountered.
      * @private
      */
