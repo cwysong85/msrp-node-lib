@@ -4,7 +4,7 @@
 
 Create the MSRP library with minimal settings:
 ```
-var msrp = require('msrp-node-lib')({
+const msrp = require('msrp-node-lib')({
     host: '127.0.0.1',
     port: 2855,
     traceMsrp: true,
@@ -16,9 +16,9 @@ var msrp = require('msrp-node-lib')({
 
 You can also pass a custom `logger` to the MSRP library, otherwise the `console` logging methods are used. Here is an example of passing the custom logger to the MSRP library:
 ```
-var winston = require('winston');
+const winston = require('winston');
 
-var msrp = require('msrp-node-lib')(
+const msrp = require('msrp-node-lib')(
 {
     host: '127.0.0.1',
     port: 2855,
@@ -39,48 +39,70 @@ var msrp = require('msrp-node-lib')(
 
 Start MSRP server:
 ```
-// create msrp server
-var msrpServer = new msrp.Server();
+// Create msrp server
+const msrpServer = new msrp.Server();
 
-// start server
+// Start server
 msrpServer.start();
 ```
 
-### Events
+### Sessions
 
-Socket connected event and MSRP session events:
+Create new session:
 ```
-msrpServer.on('socketSet', function(session) {
-    console.log('MSRP socket connected!');
+// Create session
+const session = new msrp.Session();
 
-    // create a session
-    var msrpSession = msrp.SessionController.createSession();
+// Register event handlers for session
+session.on('socketSet', () => {
+    console.log(`Socket connected for ${session.sid}`);
+});
 
-    // send a message from this session
-    msrpSession.sendMessage('Hello world!', function() {
-    	console.log('Message sent!');
+session.on('socketClose', () => {
+    console.log(`Socket closed for ${session.sid}`);
+});
+
+session.on('socketError', () => {
+    console.log(`Socket error for ${session.sid}`);
+});
+
+session.on('message', () => {
+    console.log(`Message received for ${session.sid}`);
+});
+
+session.on('end', () => {
+    console.log(`Session ${session.sid} has ended`);
+});
+```
+
+Create SDP Answer from a given SDP Offer:
+```
+session.setDescription(sdpOffer, () => {
+    console.log('Successfully set the remote SDP offer. Now get the SDP answer.');
+    session.getDescription(sdpAnswer => {
+        console.log(`Created local SDP answer: ${sdpAnswer}`);
+        ...
+    }, err => {
+        console.error(`Failed to get local SDP answer. ${err}`);
     });
-
-    // receive a message for this session
-    msrpSession.on('message', function(msg) {
-    	console.log('Body: ' + msg.body)
-    });
-
+}, err => {
+    logger.error(`Failed to set remote SDP offer. ${err}`);
 });
 ```
 
-
-Other useful socket events:
+Create SDP Offer:
 ```
-msrpServer.on('socketTimeout', function() {
-	console.log('MSRP socket timed out');
+session.getDescription(sdpOffer => {
+    console.log(`Created local SDP offer: ${sdpOffer}`);
+    ...
+}, err => {
+    console.error(`Failed to get local SDP offer. ${err}`);
 });
+```
 
-msrpServer.on('socketError', function() {
-	console.log('MSRP socket error');
+Send message:
+```
+session.sendMessage('Hello World!', () => {
+    console.log('Message sent');
 });
-
-msrpServer.on('socketClose', function() {
-	console.log('MSRP socket closed');
-});
- ```
+```
