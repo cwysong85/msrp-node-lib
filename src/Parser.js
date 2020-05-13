@@ -5,27 +5,13 @@ module.exports = function (MsrpSdk) {
   const lineEnd = '\r\n';
 
   /**
-     * Parses a raw websocket message and returns a Message object.
-     * @param {String|ArrayBuffer} data Event data from the onmessage websocket event.
-     * @returns {object} Message object, or null if there an
-     * error is encountered.
-     * @private
-     */
-  MsrpSdk.parseMessage = function (data) {
-    let msg, startIndex = 0,
-      endIndex, msgObj,
-      parseResult;
-
-    if (data instanceof ArrayBuffer) {
-      // Turn the ArrayBuffer into a string, assuming one-byte chars
-      // The body will get sliced out once we locate it
-      msg = String.fromCharCode.apply(null, new Uint8Array(data));
-    } else if (data instanceof String || typeof data === 'string') {
-      msg = data;
-    } else {
-      MsrpSdk.Logger.info('Unexpected parameter type');
-      return null;
-    }
+   * Parses a raw websocket message and returns a Message object.
+   *
+   * @param {string} data - Raw string received from the socket.
+   * @returns {object} Message object, or null if there an error parsing the message.
+   */
+  MsrpSdk.parseMessage = function (msg = '') {
+    let startIndex = 0, endIndex, msgObj, parseResult;
 
     // Extract and parse the first line
     endIndex = msg.indexOf(lineEnd);
@@ -37,7 +23,7 @@ module.exports = function (MsrpSdk) {
     const firstLine = msg.substring(startIndex, endIndex);
     const tokens = firstLine.split(' ');
     if (tokens.length < 3 || tokens[0] !== 'MSRP' || tokens[1].length === 0 || tokens[2].length === 0) {
-      MsrpSdk.Logger.warn(`Error parsing message: unexpected first line format: ${firstLine}`);
+      MsrpSdk.Logger.warn(`Error parsing message. Unexpected first line format: ${firstLine}`);
       return null;
     }
 
@@ -53,7 +39,7 @@ module.exports = function (MsrpSdk) {
     } else if (tokens.length === 3) {
       msgObj = new MsrpSdk.Message.IncomingRequest(tokens[1], tokens[2]);
     } else {
-      MsrpSdk.Logger.warn(`Error parsing message: unexpected first line format: ${firstLine}`);
+      MsrpSdk.Logger.warn(`Error parsing message. Unexpected first line format: ${firstLine}`);
       return null;
     }
 
@@ -87,14 +73,7 @@ module.exports = function (MsrpSdk) {
         MsrpSdk.Logger.warn('Error parsing message: no end line after body');
         return null;
       }
-      if (data instanceof ArrayBuffer) {
-        // Slice out the body of the message from the original ArrayBuffer
-        msgObj.body = data.slice(startIndex, endIndex);
-      } else {
-        // Assume we're only dealing with text
-        msgObj.body = msg.substring(startIndex, endIndex);
-      }
-
+      msgObj.body = msg.substring(startIndex, endIndex);
       msgObj.continuationFlag = msg.charAt(endIndex + lineEnd.length + endLineNoFlag.length);
     } else {
       msgObj.continuationFlag = msg.charAt(startIndex + endLineNoFlag.length);
@@ -104,21 +83,19 @@ module.exports = function (MsrpSdk) {
   };
 
   /**
-     * Remove any leading or trailing whitespace from the provided string.
-     * @param {String} str The string to process.
-     * @returns {String} The trimmed string.
-     * @private
-     */
+   * Remove any leading or trailing whitespace from the provided string.
+   * @param {string} str The string to process.
+   * @returns {String} The trimmed string.
+   */
   function chomp(str) {
     return str.replace(/^\s+/, '').replace(/\s+$/, '');
   }
 
   /**
-     * Remove double quotes from the start and end of the string, if present.
-     * @param {String} str The string to process.
-     * @returns {String} The unquoted string.
-     * @private
-     */
+   * Remove double quotes from the start and end of the string, if present.
+   * @param {string} str The string to process.
+   * @returns {String} The unquoted string.
+   */
   function unq(str) {
     return str.replace(/^"/, '').replace(/"$/, '');
   }

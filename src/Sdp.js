@@ -4,6 +4,26 @@
 module.exports = function (MsrpSdk) {
   const lineEnd = '\r\n';
 
+  // Helper function
+  function getConnectionMode(obj) {
+    if (!obj || !obj.attributes) {
+      return null;
+    }
+    if (obj.attributes.sendrecv) {
+      return 'sendrecv';
+    }
+    if (obj.attributes.sendonly) {
+      return 'sendonly';
+    }
+    if (obj.attributes.recvonly) {
+      return 'recvonly';
+    }
+    if (obj.attributes.inactive) {
+      return 'inactive';
+    }
+    return null;
+  }
+
   class SdpOrigin {
     constructor(origin) {
       if (origin) {
@@ -347,6 +367,14 @@ module.exports = function (MsrpSdk) {
       this.key = null;
       this.resetAttributes();
       this.media = [];
+    }
+
+    getConnectionMode(index = 0) {
+      if (!this.media[index]) {
+        return null;
+      }
+      // Check media attributes then session attributes. Default when not set is sendrecv.
+      return getConnectionMode(this.media[index]) || getConnectionMode(this) || 'sendrecv';
     }
 
     addAttribute(name, value) {

@@ -48,12 +48,9 @@ module.exports = function (MsrpSdk) {
     }
 
     getHeader(name) {
-      name = MsrpSdk.Util.normaliseHeader(name);
-      if (name in this.headers) {
-        if (this.headers[name].length > 1) {
-          return this.headers[name];
-        }
-        return this.headers[name][0];
+      const header = this.headers[MsrpSdk.Util.normaliseHeader(name)];
+      if (header) {
+        return header.length > 1 ? header : header[0];
       }
       return null;
     }
@@ -63,7 +60,7 @@ module.exports = function (MsrpSdk) {
     }
 
     getEndLine() {
-      return this.getEndLineNoFlag().concat(this.continuationFlag, lineEnd);
+      return `-------${this.tid}${this.continuationFlag}\r\n`;
     }
   }
 
@@ -71,9 +68,12 @@ module.exports = function (MsrpSdk) {
    * Parent class for all MSRP requests.
    */
   class Request extends BaseMessage {
-    constructor() {
+    constructor(method) {
+      if (!method) {
+        throw new TypeError('Required parameter is missing');
+      }
       super();
-      this.method = null;
+      this.method = method;
       this.contentType = null;
       this.body = null;
     }
@@ -86,25 +86,24 @@ module.exports = function (MsrpSdk) {
     addTextBody(text) {
       this.addBody('text/plain', text);
     }
+
+    isComplete() {
+      return (!this.byteRange || this.byteRange.start === 1) && this.continuationFlag === Flag.end;
+    }
   }
 
   /**
    * Class representing an outgoing MSRP request.
    */
   class OutgoingRequest extends Request {
-    constructor(session, method) {
-      if (!session || !method) {
+    constructor(routePaths, method, tid = null) {
+      if (!routePaths) {
         throw new TypeError('Required parameter is missing');
       }
-      super();
-
-      this.tid = MsrpSdk.Util.newTID();
-      this.method = method;
-
-      this.toPath = session.toPath;
-      this.fromPath = [session.localUri];
-      this.session = session;
-
+      super(method);
+      this.tid = tid || MsrpSdk.Util.newTID();
+      this.toPath = routePaths.toPath;
+      this.fromPath = routePaths.fromPath;
       this.byteRange = null;
     }
 
@@ -164,30 +163,24 @@ module.exports = function (MsrpSdk) {
    */
   class IncomingRequest extends Request {
     constructor(tid, method) {
-      if (!tid || !method) {
+      if (!tid) {
         throw new TypeError('Required parameter is missing');
       }
-      super();
-
+      super(method);
       this.tid = tid;
-      this.method = method;
 
-      switch (method) {
-        case 'SEND':
-          // Start by assuming responses are required
-          // Can be overriden by request headers
-          this.responseOn = {
-            success: true,
-            failure: true
-          };
-          break;
-        case 'REPORT':
-          // Never send responses
-          this.responseOn = {
-            success: false,
-            failure: false
-          };
-          break;
+      if (method === 'REPORT') {
+        // Never send responses
+        this.responseOn = {
+          success: false,
+          failure: false
+        };
+      } else {
+        // Start by assuming responses are required. Can be overriden by "Failure-Report" request headers.
+        this.responseOn = {
+          success: true,
+          failure: true
+        };
       }
 
       this.byteRange = {
@@ -213,7 +206,7 @@ module.exports = function (MsrpSdk) {
    * Class representing an outgoing MSRP response.
    */
   class OutgoingResponse extends Response {
-    constructor(request, localUri, status) {
+    constructor(request, localUri, status, comment = null) {
       if (!request || !localUri) {
         throw new TypeError('Required parameter is missing');
       }
@@ -221,7 +214,7 @@ module.exports = function (MsrpSdk) {
 
       this.tid = request.tid;
       this.status = status || MsrpSdk.Status.OK;
-      this.comment = MsrpSdk.StatusComment[this.status];
+      this.comment = comment || MsrpSdk.StatusComment[this.status];
 
       if (request.method === 'SEND') {
         // Response is only sent to the previous hop
@@ -259,7 +252,7 @@ module.exports = function (MsrpSdk) {
    * Class representing an incoming MSRP response.
    */
   class IncomingResponse extends Response {
-    constructor(tid, status, comment) {
+    constructor(tid, status, comment = '') {
       if (!tid || !status) {
         throw new TypeError('Required parameter is missing');
       }

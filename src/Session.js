@@ -51,51 +51,61 @@ module.exports = function (MsrpSdk) {
     }
 
     /**
-     * Sends an MSRP Message to the Session's remote party
-     * @param  {String}   body        Message body
-     * @param  {Function} callback    Callback function
-     * @param  {String}   contentType Message Content-Type
+     * Check if we can send a message with the given content-type.
+     * @param {string} [contentType=text/plain] The message content type.
+     * @param {boolean} [logReason=false] Log a warning message in case message cannot be sent.
      */
-    sendMessage(body, callback, contentType) {
-      // Check if the remote endpoint will accept the message by checking its SDP
-      contentType = contentType || 'text/plain';
+    canSend(contentType = 'text/plain', logReason = false) {
+      if (!this.remoteSdp) {
+        logReason && MsrpSdk.Logger.warn('[Session]: Cannot send message because there is no remote SDP');
+        return false;
+      }
+      if (!this.socket) {
+        logReason && MsrpSdk.Logger.warn('[Session]: Cannot send message because there is no active socket');
+        return false;
+      }
+
+      const connectionMode = this.remoteSdp.getConnectionMode();
+      if (connectionMode === 'sendonly' || connectionMode === 'inactive') {
+        logReason && MsrpSdk.Logger.warn(`[Session]: Cannot send message because remote SDP is ${connectionMode}`);
+        return false;
+      }
 
       // Get the wildcard type, e.g. text/*
       const wildcardContentType = contentType.replace(/\/.*$/, '/*');
-      let canSend = this.acceptTypes.some(type => type === contentType || type === wildcardContentType || type === '*');
-
-      if (this.remoteSdp.attributes.sendonly || this.remoteSdp.attributes.inactive) {
-        canSend = false;
+      const isTypeSupported = this.acceptTypes.some(type => type === contentType || type === wildcardContentType || type === '*');
+      if (!isTypeSupported) {
+        logReason && MsrpSdk.Logger.warn(`[Session]: Cannot send message because ${contentType} is not supported`);
+        return false;
       }
 
-      if (this.remoteSdp.media && this.remoteSdp.media[0] && this.remoteSdp.media[0].attributes) {
-        if (this.remoteSdp.media[0].attributes.sendonly) {
-          canSend = false;
-        }
+      return true;
+    }
+
+    /**
+     * Sends an MSRP Message to the Session's remote party.
+     * @param {string} body Message body
+     * @param {string} [contentType=text/plain] Message Content-Type
+     * @param {Function} [onMessageSent] Callback function invoked when request is sent.
+     * @param {Function} [onReportReceived] Callback function invoked when report is received.
+     * @returns {boolean} Returns true if message has been queued to be sent.
+     */
+    sendMessage(body, contentType, onMessageSent, onReportReceived) {
+      contentType = contentType || 'text/plain';
+
+      if (!this.canSend(contentType, true)) {
+        return false;
       }
 
-      if (canSend) {
-        if (this.socket) {
-          this.socket.sendMessage(this, {
-            body,
-            contentType
-          }, {
-            toPath: this.remoteEndpoints,
-            localUri: this.localEndpoint.uri
-          }, callback);
-        } else {
-          // We don't have a socket. Did the other side send a connection?
-          MsrpSdk.Logger.error('[Session]: Cannot send message because there is not an active socket! Did the remote side connect? Check a=setup line in SDP media.');
-        }
-      } else {
-        MsrpSdk.Logger.warn('[Session]: Cannot send message due to remote endpoint SDP attributes');
-      }
+      const message = { body, contentType };
+      this.socket.sendMessage(this, message, onMessageSent, onReportReceived);
+      return true;
     }
 
     /**
      * Function called during the SDP negotiation to create the local SDP.
-     * @param  {Function} onSuccess onSuccess callback
-     * @param  {Function} onFailure onFailure callback
+     * @param {Function} onSuccess onSuccess callback
+     * @param {Function} onFailure onFailure callback
      */
     getDescription(onSuccess, onFailure) {
       MsrpSdk.Logger.debug('[Session]: Creating local SDP...');
@@ -168,9 +178,9 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Function called during the SDP negotiation to set the remote SDP.
-     * @param  {String}   description Remote description
-     * @param  {Function} onSuccess   onSuccess callback
-     * @param  {Function} onFailure   onFailure callback
+     * @param {string}   description Remote description
+     * @param {Function} onSuccess   onSuccess callback
+     * @param {Function} onFailure   onFailure callback
      */
     setDescription(description, onSuccess, onFailure) {
       MsrpSdk.Logger.debug('[Session]: Processing remote SDP...');
@@ -254,7 +264,7 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Sets the session's socket and and the needed socket event listeners
-     * @param  {Object} socket Socket
+     * @param {object} socket Socket
      */
     setSocket(socket) {
       this.socket = socket;
@@ -332,7 +342,7 @@ module.exports = function (MsrpSdk) {
       MsrpSdk.Logger.debug(`[Session]: Starting MSRP heartbeats for session ${this.sid}...`);
 
       // Send heartbeats
-      const sendHeartbeat = this.sendMessage.bind(this, 'HEARTBEAT', null, 'text/x-msrp-heartbeat');
+      const sendHeartbeat = this.sendMessage.bind(this, 'HEARTBEAT', 'text/x-msrp-heartbeat');
       this.heartbeatPingFunc = setInterval(sendHeartbeat, heartbeatsInterval);
 
       // Look for timeouts every second
@@ -353,7 +363,7 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Helper function for establishing connections when the SDP negotiation has been completed
-     * @param  {Function} callback Callback
+     * @param {Function} callback Callback
      */
     startConnection(callback) {
       // If the SDP negotiation has not been completed, return
@@ -387,7 +397,7 @@ module.exports = function (MsrpSdk) {
 
         // Create socket and connect
         MsrpSdk.Logger.debug(`[Session]: Creating socket for session ${this.sid}...`);
-        const socket = new MsrpSdk.SocketHandler(new net.Socket());
+        const socket = MsrpSdk.SocketHandler(new net.Socket());
         socket.connect({
           host: remoteEndpointUri.authority,
           port: remoteEndpointUri.port,
@@ -399,7 +409,7 @@ module.exports = function (MsrpSdk) {
           // Send bodiless MSRP message
           const request = new MsrpSdk.Message.OutgoingRequest({
             toPath: this.remoteEndpoints,
-            localUri: this.localEndpoint.uri
+            fromPath: [this.localEndpoint.uri]
           }, 'SEND');
           try {
             socket.write(request.encode(), () => {
@@ -426,7 +436,7 @@ module.exports = function (MsrpSdk) {
 
   /**
    * Helper function for getting the local port to be used in the session
-   * @param  {String} setup Local setup line content
+   * @param {string} setup Local setup line content
    * @return {Number}       Local port to be used in the session
    */
   function getAssignedPort(setup) {

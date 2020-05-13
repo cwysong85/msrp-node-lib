@@ -85,7 +85,7 @@ module.exports = function (MsrpSdk) {
     },
     /**
      * Encodes a string as an SDP filename-string, as defined in RFC 5547.
-     * @param {String} str The string to encode.
+     * @param {string} str The string to encode.
      * @returns {String} The encoded string.
      */
     encodeSdpFileName(str) {
@@ -97,7 +97,7 @@ module.exports = function (MsrpSdk) {
     },
     /**
      * Decodes an SDP filename-string, as defined in RFC 5547.
-     * @param {String} str The string to decode.
+     * @param {string} str The string to decode.
      * @returns {String} The decoded string.
      */
     decodeSdpFileName(str) {
@@ -110,7 +110,7 @@ module.exports = function (MsrpSdk) {
     /**
      * Encodes a string as a quoted-string, as defined in RFC 822.
      * Note: does not support folding, as this is not used in MSRP.
-     * @param {String} str The string to encode.
+     * @param {string} str The string to encode.
      * @returns {String} The encoded string.
      */
     encodeQuotedString(str) {
@@ -130,7 +130,7 @@ module.exports = function (MsrpSdk) {
     /**
      * Decodes a quoted-string, as defined in RFC 822.
      * Note: does not support folding, as this is not used in MSRP.
-     * @param {String} str The string to decode.
+     * @param {string} str The string to decode.
      * @returns {String} The decoded string.
      */
     decodeQuotedString(str) {

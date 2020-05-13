@@ -29,7 +29,7 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Parses an SDP type selector, as defined in RFC 5547.
-     * @param {String} selector The selector value to parse.
+     * @param {string} selector The selector value to parse.
      */
     parseSdpTypeSelector(selector) {
       let position = 0,
@@ -104,7 +104,7 @@ module.exports = function (MsrpSdk) {
     /**
      * Parses a Content-Type header, as defined in RFC 2045.
      * Note: Does not allow for unquoted white space.
-     * @param {String} header The header value to parse.
+     * @param {string} header The header value to parse.
      */
     parseContentTypeHeader(header) {
       let position = 0,

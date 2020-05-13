@@ -102,7 +102,15 @@ session.getDescription(sdpOffer => {
 
 Send message:
 ```
-session.sendMessage('Hello World!', () => {
-    console.log('Message sent');
-});
+session.sendMessage('Hello World!', 'text/plain',
+    msgId => {
+        // onMessageSent callback
+        messageId = msgId;
+        logger.debug(`Message sent with messageId ${messageId}`);
+    },
+    status => {
+        // onReportReceived callback
+        logger.debug(`Received report with status ${status} for messageId ${messageId}`);
+    });
+
 ```

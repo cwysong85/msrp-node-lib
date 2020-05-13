@@ -13,13 +13,13 @@ module.exports = function (MsrpSdk) {
       super();
       this.server = net.createServer(socket => {
         MsrpSdk.Logger.info(`[Server]: New connection from ${socket.remoteAddress}:${socket.remotePort}`);
-        new MsrpSdk.SocketHandler(socket);
+        MsrpSdk.SocketHandler(socket);
       });
     }
 
     /**
      * Starts the MSRP server
-     * @param  {Function} callback Callback function
+     * @param {Function} callback Callback function
      */
     start(callback) {
       this.server.listen(MsrpSdk.Config.port, MsrpSdk.Config.host, () => {

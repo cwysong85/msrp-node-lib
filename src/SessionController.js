@@ -37,7 +37,7 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Gets a session by session ID
-     * @param  {String} sessionId Session ID
+     * @param {string} sessionId Session ID
      * @return {Session}          Session
      */
     getSession(sessionId) {
@@ -46,7 +46,7 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Removes a session
-     * @param  {Session} session Session
+     * @param {Session} session Session
      */
     removeSession(session) {
       if (this.sessionsMap.has(session.sid)) {
@@ -60,7 +60,7 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Checks if the socket for the given session is used by another session.
-     * @param  {Session} session Session
+     * @param {Session} session Session
      * @returns {boolean} Returns true if socket is reused
      */
     isSocketReused(session) {
@@ -75,8 +75,8 @@ module.exports = function (MsrpSdk) {
 
   /**
    * Helper function for forwarding a session's events to the session controller
-   * @param  {Session} session Session
-   * @param  {SessionController} sessionController Session controller
+   * @param {Session} session Session
+   * @param {SessionController} sessionController Session controller
    */
   function forwardSessionEvents(session, sessionController) {
     session.on('message', message => {
