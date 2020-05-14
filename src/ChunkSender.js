@@ -5,7 +5,7 @@ const { StringDecoder } = require('string_decoder');
 // eslint-disable-next-line max-lines-per-function
 module.exports = function (MsrpSdk) {
 
-  const MAX_CHUNK = 2000;
+  const CHUNK_SIZE = 2048;
   const REPORT_TIMEOUT = 30000; // Wait for 30 seconds to receive the Success/Failure report
 
   /**
@@ -82,7 +82,7 @@ module.exports = function (MsrpSdk) {
 
       if (typeof this.onReportReceived === 'function') {
         try {
-          this.onReportReceived(status);
+          this.onReportReceived(status, this.messageId);
         } catch (err) {
           MsrpSdk.Logger.error('Error in onReportReceived handler.', err);
         }
@@ -119,7 +119,7 @@ module.exports = function (MsrpSdk) {
           }
         }
         chunk.contentType = this.contentType;
-        if (this.size < MAX_CHUNK) {
+        if (this.size < CHUNK_SIZE) {
           chunk.body = this.blob.toString('utf8');
           end = this.size;
         } else {
@@ -127,8 +127,8 @@ module.exports = function (MsrpSdk) {
           if (!this.decoder) {
             this.decoder = new StringDecoder('utf8');
           }
-          chunk.body = this.decoder.write(this.blob.slice(this.seek, this.seek + MAX_CHUNK));
-          this.seek += MAX_CHUNK;
+          chunk.body = this.decoder.write(this.blob.slice(this.seek, this.seek + CHUNK_SIZE));
+          this.seek += CHUNK_SIZE;
           end = this.sentBytes + Buffer.byteLength(chunk.body, 'utf8');
         }
       }

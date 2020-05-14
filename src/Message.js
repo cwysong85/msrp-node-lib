@@ -127,8 +127,7 @@ module.exports = function (MsrpSdk) {
 
       if (this.byteRange) {
         const r = this.byteRange;
-        const total = r.total < 0 ? '*' : r.total;
-        this.addHeader('byte-range', `${r.start}-${r.end}/${total}`);
+        this.addHeader('byte-range', `${r.start}-${r.end < 0 ? '*' : r.end}/${r.total < 0 ? '*' : r.total}`);
       }
 
       for (name in this.headers) {

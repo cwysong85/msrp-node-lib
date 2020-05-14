@@ -103,12 +103,11 @@ session.getDescription(sdpOffer => {
 Send message:
 ```
 session.sendMessage('Hello World!', 'text/plain',
-    msgId => {
-        // onMessageSent callback
-        messageId = msgId;
+    messageId => {
+        // onMessageSent callback - This is invoked after all message chunks are sent
         logger.debug(`Message sent with messageId ${messageId}`);
     },
-    status => {
+    (status, messageId) => {
         // onReportReceived callback
         logger.debug(`Received report with status ${status} for messageId ${messageId}`);
     });

@@ -3,8 +3,9 @@
 // eslint-disable-next-line max-lines-per-function
 module.exports = function (MsrpSdk) {
 
-  const MSRP_REGEX = /MSRP [^]*?-{7}\S*?[$#+]/g;
+  const MSRP_START_REGEX = /MSRP (\S+) /g;
   const RCV_TIMEOUT = 30000; // 30 seconds
+  const MAX_BUFFERED_DATA = 1024 * 1024; // 1 MB
 
   // Private variables
   const chunkReceivers = new Map();
@@ -13,6 +14,11 @@ module.exports = function (MsrpSdk) {
   const activeSenders = [];
   let receiverCheckInterval = null;
   let senderTimeout = null;
+
+  function createMessageRegex(tid = '') {
+    const escapedTID = tid.replace(/[.*+?|()[\]{}\\$^]/g, '\\$&');
+    return new RegExp(`MSRP ${escapedTID} [\\s\\S]*?\\r\\n-{7}${escapedTID}[$#+]\\r\\n`, 'g');
+  }
 
   function getSocketInfo(socket) {
     const socketAddr = socket.address() || {};
@@ -27,6 +33,7 @@ module.exports = function (MsrpSdk) {
    */
   const SocketHandler = function (socket) {
     let socketInfo = '';
+    let bufferedData = '';
 
     // Set socket encoding so we get Strings in the 'data' event
     socket.setEncoding('utf8');
@@ -58,35 +65,55 @@ module.exports = function (MsrpSdk) {
     });
 
     socket.on('data', data => {
-      if (MsrpSdk.Config.traceMsrp) {
-        MsrpSdk.Logger.info(`[SocketHandler]: MSRP received:\r\n${data}`);
-      }
+      MsrpSdk.Logger.debug(`[SocketHandler]: Data received:\r\n${data}`);
 
-      // Incoming data may include more than one MSRP message. Match messages using regex.
-      const messages = data.match(MSRP_REGEX);
-      if (!messages) {
-        MsrpSdk.Logger.warn(`[SocketHandler]: Unable to parse incoming message. Message was discarded. Message: ${data}`);
-        return;
-      }
+      bufferedData += data;
 
-      messages.forEach(message => {
+      // Find the start of the first message
+      MSRP_START_REGEX.lastIndex = 0;
+      let startMatch = MSRP_START_REGEX.exec(bufferedData);
+      let lastIndex = 0;
+
+      while (startMatch) {
         try {
-          // Parse each message
-          const parsedMessage = MsrpSdk.parseMessage(message);
-          if (!parsedMessage) {
-            MsrpSdk.Logger.warn(`[SocketHandler]: Unable to parse incoming message. Message was discarded. Message: ${message}`);
-            return;
-          }
-          // Handle each message
-          if (parsedMessage.method) {
-            handleIncomingRequest(parsedMessage, socket);
-          } else {
-            handleIncomingResponse(parsedMessage);
+          // Create a unique message RegExp including the transaction Id
+          const tid = startMatch[1];
+          const msgRegex = createMessageRegex(tid);
+          msgRegex.lastIndex = startMatch.index;
+
+          const msgMatch = msgRegex.exec(bufferedData);
+          if (msgMatch) {
+            // Move lastIndex to the end of the matched message
+            lastIndex = msgRegex.lastIndex;
+            MSRP_START_REGEX.lastIndex = lastIndex;
+
+            const message = msgMatch[0];
+            if (MsrpSdk.Config.traceMsrp) {
+              MsrpSdk.Logger.info(`[SocketHandler]: MSRP received:\r\n${message}`);
+            }
+            const parsedMessage = MsrpSdk.parseMessage(message);
+            if (!parsedMessage) {
+              MsrpSdk.Logger.warn(`[SocketHandler]: Unable to parse incoming message. Message was discarded. Message: ${message}`);
+            } else if (parsedMessage.method) {
+              handleIncomingRequest(parsedMessage, socket);
+            } else {
+              handleIncomingResponse(parsedMessage);
+            }
           }
         } catch (e) {
           MsrpSdk.Logger.error('[SocketHandler]: Exception handling message.', e);
         }
-      });
+        // Look for next message
+        startMatch = MSRP_START_REGEX.exec(bufferedData);
+      }
+      if (lastIndex > 0) {
+        bufferedData = bufferedData.slice(lastIndex);
+      }
+
+      if (bufferedData.length > MAX_BUFFERED_DATA) {
+        MsrpSdk.Logger.warn('[SocketHandler]: Buffered data has exceeded max allowed size. Discard all buffered data.');
+        bufferedData = '';
+      }
     });
 
     socket.on('close', () => {
@@ -110,13 +137,13 @@ module.exports = function (MsrpSdk) {
         toPath: session.remoteEndpoints,
         fromPath: [session.localEndpoint.uri]
       };
-      const sender = new MsrpSdk.ChunkSender(routePaths, message, status => {
+      const sender = new MsrpSdk.ChunkSender(routePaths, message, (status, messageId) => {
         // We are done processing reports for this sender
-        chunkSenders.delete(sender.messageId);
-        MsrpSdk.Logger.debug(`[SocketHandler]: Removed sender for ${sender.messageId}. Num active senders: ${chunkSenders.size}`);
+        chunkSenders.delete(messageId);
+        MsrpSdk.Logger.debug(`[SocketHandler]: Removed sender for ${messageId}. Num active senders: ${chunkSenders.size}`);
 
         if (typeof onReportReceived === 'function') {
-          onReportReceived(status);
+          onReportReceived(status, messageId);
         }
       });
 
@@ -333,49 +360,53 @@ module.exports = function (MsrpSdk) {
    * @param {number} status Status to be included in the report
    */
   function sendReport(socket, routePaths, req, status) {
-    const isSuccess = status === MsrpSdk.Status.OK;
-    if (isSuccess) {
-      // Note: As allowed in RFC4975, we only send the Success Report after receiving all message chunks.
-      if (!req.isComplete() || req.getHeader('success-report') !== 'yes') {
-        // No need to send a Success Report
+    try {
+      const isSuccess = status === MsrpSdk.Status.OK;
+      if (isSuccess) {
+        // Note: As allowed in RFC4975, we only send the Success Report after receiving all message chunks.
+        if (!req.isComplete() || req.getHeader('success-report') !== 'yes') {
+          // No need to send a Success Report
+          return;
+        }
+      } else if (req.getHeader('failure-report') === 'no') {
+        // No need to send a Failure Report
         return;
       }
-    } else if (req.getHeader('failure-report') === 'no') {
-      // No need to send a Failure Report
-      return;
-    }
 
-    if (!socket.writable) {
-      MsrpSdk.Logger.warn(`[SocketHandler]: Unable to send report for ${req.messageId}. Socket is not writable.`);
-      return;
-    }
-
-    const statusHeader = `000 ${status} ${MsrpSdk.StatusComment[status]}`;
-    const report = new MsrpSdk.Message.OutgoingRequest(routePaths, 'REPORT');
-    report.addHeader('message-id', req.messageId);
-    report.addHeader('status', statusHeader);
-    if (req.byteRange) {
-      if (isSuccess) {
-        report.byteRange = req.byteRange;
-      } else {
-        // RFC4975
-        // If a failure REPORT request is sent in response to a SEND request
-        // that contained a chunk, it MUST include a Byte-Range header field
-        // indicating the actual range being reported on.  It can take the
-        // range-start and total values from the original SEND request, but MUST
-        // calculate the range-end field from the actual body data
-        report.byteRange = {
-          start: req.byteRange.start,
-          end: req.byteRange.start + Buffer.byteLength(req.body, 'utf8') - 1,
-          total: req.byteRange.total
-        };
+      if (!socket.writable) {
+        MsrpSdk.Logger.warn(`[SocketHandler]: Unable to send report for ${req.messageId}. Socket is not writable.`);
+        return;
       }
-    }
 
-    const encodeMsg = report.encode();
-    socket.write(encodeMsg);
-    if (MsrpSdk.Config.traceMsrp) {
-      MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+      const statusHeader = `000 ${status} ${MsrpSdk.StatusComment[status]}`;
+      const report = new MsrpSdk.Message.OutgoingRequest(routePaths, 'REPORT');
+      report.addHeader('message-id', req.messageId);
+      report.addHeader('status', statusHeader);
+      if (req.byteRange) {
+        if (isSuccess) {
+          report.byteRange = req.byteRange;
+        } else {
+          // RFC4975
+          // If a failure REPORT request is sent in response to a SEND request
+          // that contained a chunk, it MUST include a Byte-Range header field
+          // indicating the actual range being reported on.  It can take the
+          // range-start and total values from the original SEND request, but MUST
+          // calculate the range-end field from the actual body data
+          report.byteRange = {
+            start: req.byteRange.start,
+            end: req.body ? req.byteRange.start + Buffer.byteLength(req.body, 'utf8') - 1 : 0,
+            total: req.byteRange.total
+          };
+        }
+      }
+
+      const encodeMsg = report.encode();
+      socket.write(encodeMsg);
+      if (MsrpSdk.Config.traceMsrp) {
+        MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+      }
+    } catch (err) {
+      MsrpSdk.Logger.error('[SocketHandler]: Error sending report.', err);
     }
   }
 
