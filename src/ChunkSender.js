@@ -17,7 +17,7 @@ module.exports = function (MsrpSdk) {
    *
    * @param {object} routePaths The message paths.
    * @param {Array} routePaths.toPath The To-Path uris.
-   * @param {string} routePaths.fromPath The From-Path uri.
+   * @param {Array} routePaths.fromPath The From-Path uri.
    * @param {object} [message] The message data
    * @param {String|Buffer} [message.body] The body of the message to send. If not set, an empty SEND message is sent.
    * @param {string} [message.contentType] The MIME type of the message. Default is text/plain.
@@ -30,10 +30,10 @@ module.exports = function (MsrpSdk) {
         throw new TypeError('Missing mandatory parameter: session');
       }
 
-      const { body, contentType, disposition, description } = message;
+      const { body = '', contentType, disposition, description } = message;
 
       this.routePaths = routePaths;
-      this.blob = Buffer.from(body || '', 'utf8');
+      this.blob = typeof body === 'string' ? Buffer.from(body, 'utf8') : body;
       this.contentType = contentType || 'text/plain';
       this.disposition = disposition;
       this.description = description;
@@ -156,7 +156,7 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Processes report(s) for the message as they arrive.
-     * @param {Message.Request} report The received report for this sender.
+     * @param {object} report The received report for this sender.
      */
     processReport(report) {
       if (this.finished) {
@@ -222,7 +222,7 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Checks whether all chunks have been sent.
-     * @returns {Boolean} True if all chunks have been sent, or if the
+     * @returns {boolean} True if all chunks have been sent, or if the
      * message has been aborted. False if there are further chunks to be sent.
      */
     isSendComplete() {
@@ -231,7 +231,7 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Checks whether all chunks have been sent and acked.
-     * @returns {Boolean} True if all chunks have been sent and acked, or if the
+     * @returns {boolean} True if all chunks have been sent and acked, or if the
      * message has been aborted. False if there are further chunks to be sent,
      * or if there are acks outstanding.
      */

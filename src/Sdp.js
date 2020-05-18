@@ -4,25 +4,30 @@
 module.exports = function (MsrpSdk) {
   const lineEnd = '\r\n';
 
+  const CONNECTION_MODES = ['sendrecv', 'sendonly', 'recvonly', 'inactive'];
+
   // Helper function
   function getConnectionMode(obj) {
     if (!obj || !obj.attributes) {
       return null;
     }
-    if (obj.attributes.sendrecv) {
-      return 'sendrecv';
-    }
-    if (obj.attributes.sendonly) {
-      return 'sendonly';
-    }
-    if (obj.attributes.recvonly) {
-      return 'recvonly';
-    }
-    if (obj.attributes.inactive) {
-      return 'inactive';
-    }
-    return null;
+    const attr = obj.attributes.find(a => CONNECTION_MODES.includes(a.name));
+    return attr ? attr.name : null;
   }
+
+  function parseAttribute(line) {
+    let aName, aValue;
+    const colonIndex = line.indexOf(':');
+    if (colonIndex === -1) {
+      aName = line;
+      aValue = null;
+    } else {
+      aName = line.substr(0, colonIndex);
+      aValue = line.substr(colonIndex + 1);
+    }
+    return { aName, aValue };
+  }
+
 
   class SdpOrigin {
     constructor(origin) {
@@ -40,7 +45,7 @@ module.exports = function (MsrpSdk) {
     reset() {
       this.username = '-';
       this.id = MsrpSdk.Util.dateToNtpTime();
-      this.version = this.sessId;
+      this.version = this.id;
       this.netType = 'IN';
       this.addrType = 'IP4';
       this.address = 'address.invalid';
@@ -59,21 +64,11 @@ module.exports = function (MsrpSdk) {
       this.netType = split[3];
       this.addrType = split[4];
       this.address = split[5];
-
       return true;
     }
 
     toString() {
-      let o = '';
-
-      o += `${this.username} `;
-      o += `${this.id} `;
-      o += `${this.version} `;
-      o += `${this.netType} `;
-      o += `${this.addrType} `;
-      o += this.address;
-
-      return o;
+      return `${this.username} ${this.id} ${this.version} ${this.netType} ${this.addrType} ${this.address}`;
     }
   }
 
@@ -82,7 +77,7 @@ module.exports = function (MsrpSdk) {
       if (conn) {
         // Parse the provided connection line
         if (!this.parse(conn)) {
-          throw new Error('Call parse SDP c-line');
+          throw new Error('Cannot parse SDP c-line');
         }
       } else {
         // Set some sensible defaults
@@ -93,31 +88,28 @@ module.exports = function (MsrpSdk) {
     reset() {
       this.netType = 'IN';
       this.addrType = 'IP4';
-      this.address = 'address.invalid';
+      this.address = null;
     }
 
-    parse(con) {
-      const split = con.split(' ');
+    parse(conn) {
+      const split = conn.split(' ');
       if (split.length !== 3) {
-        MsrpSdk.Logger.warn(`[SDP]: Unexpected connection line: ${con}`);
+        MsrpSdk.Logger.warn(`[SDP]: Unexpected connection line: ${conn}`);
         return false;
       }
 
       this.netType = split[0];
       this.addrType = split[1];
       this.address = split[2];
-
       return true;
     }
 
     toString() {
-      let c = '';
+      return `${this.netType} ${this.addrType} ${this.address || 'address.invalid'}`;
+    }
 
-      c += `${this.netType} `;
-      c += `${this.addrType} `;
-      c += this.address;
-
-      return c;
+    isEqual(conn) {
+      return this.netType === conn.netType && this.addrType === conn.addrType && this.address === conn.address;
     }
   }
 
@@ -132,6 +124,14 @@ module.exports = function (MsrpSdk) {
         // Set some sensible defaults
         this.reset();
       }
+    }
+
+    _getDate(time) {
+      return time === '0' ? null : MsrpSdk.Util.ntpTimeToDate(time);
+    }
+
+    _getTime(date) {
+      return date ? MsrpSdk.Util.dateToNtpTime(date) : '0';
     }
 
     reset() {
@@ -150,17 +150,8 @@ module.exports = function (MsrpSdk) {
         return false;
       }
 
-      if (tokens[0] === '0') {
-        this.start = null;
-      } else {
-        this.start = MsrpSdk.Util.ntpTimeToDate(tokens[0]);
-      }
-
-      if (tokens[1] === '0') {
-        this.stop = null;
-      } else {
-        this.stop = MsrpSdk.Util.ntpTimeToDate(tokens[1]);
-      }
+      this.start = this._getDate(tokens[0]);
+      this.stop = this._getDate(tokens[1]);
 
       // Don't care about repeat lines at the moment
       this.repeat = lines;
@@ -169,30 +160,48 @@ module.exports = function (MsrpSdk) {
     }
 
     toString() {
-      let t = '';
-
-      if (this.start) {
-        t += MsrpSdk.Util.dateToNtpTime(this.start);
-      } else {
-        t += '0';
-      }
-      t += ' ';
-      if (this.stop) {
-        t += MsrpSdk.Util.dateToNtpTime(this.stop);
-      } else {
-        t += '0';
-      }
-
+      let t = `${this._getTime(this.start)} ${this._getTime(this.stop)}`;
       this.repeat.forEach(line => {
         t += `\r\n${line}`;
       });
-
       return t;
     }
   }
 
-  class SdpMedia {
+  class AttributesContainer {
+    constructor() {
+      this.attributes = [];
+    }
+
+    addAttribute(name, value) {
+      this.attributes.push({ name, value });
+    }
+
+    setAttribute(name, value) {
+      const idx = this.attributes.findIndex(attr => attr.name === name);
+      if (idx === -1) {
+        // Add attribute
+        this.attributes.push({ name, value });
+      } else {
+        // Update existing attribute
+        this.attributes[idx].value = value;
+      }
+    }
+
+    getAttributeValue(name) {
+      const attribute = this.attributes.find(attr => attr.name === name);
+      return attribute && attribute.value;
+    }
+
+    hasAttribute(name) {
+      return this.attributes.some(attr => attr.name === name);
+    }
+  }
+
+  class SdpMedia extends AttributesContainer {
     constructor(media) {
+      super();
+
       if (media) {
         // Parse the provided media line
         if (!this.parse(media)) {
@@ -207,48 +216,20 @@ module.exports = function (MsrpSdk) {
     reset() {
       this.media = 'message';
       this.port = 2855;
+      this.portnum = 1;
       this.proto = 'TCP/MSRP';
       this.format = '*';
-      this.title = null;
-      this.connection = null;
+
+      this.info = null;
+      this.connection = new SdpConnection();
       this.bandwidth = [];
       this.key = null;
-      this.resetAttributes();
+      this.attributes = [];
     }
 
-    addAttribute(name, value) {
-      if (!this.attributes[name]) {
-        this.attributes[name] = [];
-        this.attributeNameOrder.push(name);
-      }
-      if (value && typeof value === 'string') {
-        this.attributes[name].push(value);
-      } else if (Array.isArray(value)) {
-        this.attributes[name].push(...value);
-      }
-    }
-
-    removeAttribute(name) {
-      if (this.attributes[name]) {
-        delete this.attributes[name];
-        this.attributeNameOrder.splice(
-          this.attributeNameOrder.indexOf(name), 1);
-      }
-    }
-
-    resetAttributes() {
-      this.attributeNameOrder = [];
-      this.attributes = {};
-    }
-
-    replaceAttribute(oldName, newName, newValue) {
-      if (this.attributes[oldName]) {
-        delete this.attributes[oldName];
-        this.addAttribute(newName, newValue);
-        this.attributeNameOrder.splice(this.attributeNameOrder.lastIndexOf(newName), 1);
-        this.attributeNameOrder.splice(
-          this.attributeNameOrder.indexOf(oldName), 1, newName);
-      }
+    isMsrp() {
+      return this.media === 'message' && !!this.port &&
+          (this.proto === 'TCP/MSRP' || this.proto === 'TCP/TLS/MSRP') && this.format === '*';
     }
 
     parse(media) {
@@ -256,26 +237,47 @@ module.exports = function (MsrpSdk) {
 
       const lines = media.split(lineEnd);
       const mLine = lines.shift();
-      const tokens = mLine.split(' ');
-      if (tokens.length < 4) {
+
+      // RFC-4566
+      // m=<media> <port> <proto> <fmt> ...
+      // m=<media> <port>/<number of ports> <proto> <fmt> ...
+      //
+      // ABNF definition
+      // %x6d "=" media SP port ["/" integer] SP proto 1*(SP fmt) CRLF
+      //
+      // media =  token
+      //          ;typically "audio", "video", "text", or "application"
+      //
+      // fmt =    token
+      //          ;typically an RTP payload type for audio and video media
+      //
+      // proto  = token *("/" token)
+      //          ;typically "RTP/AVP" or "udp"
+      //
+      // port =   1*DIGIT
+      //
+      const reM = /^(\w+) +(\d+)(?:\/(\d))? +(\S+)(?: +(\S+(?: +\S+)*))?/;
+      const tmp = reM.exec(mLine);
+      if (!tmp) {
         MsrpSdk.Logger.warn(`[SDP]: Unexpected media line: ${mLine}`);
         return false;
       }
 
-      this.media = tokens.shift();
-      this.port = parseInt(tokens.shift(), 10);
-      this.proto = tokens.shift();
-      this.format = tokens.join(' ');
+      this.media = tmp[1];
+      this.port = +tmp[2];
+      this.portnum = +(tmp[3] || 1);
+      this.proto = tmp[4];
+      this.format = tmp[5];
 
       lines.forEach(line => {
         if (!line || line === lineEnd) {
           MsrpSdk.Logger.warn('[SDP]: Unexpected empty line in SDP (within media)');
           return;
         }
-        let value = line.substr(2);
+        const value = line.slice(2);
         switch (line.substr(0, 2)) {
           case 'i=':
-            this.title = value;
+            this.info = value;
             break;
           case 'c=':
             this.connection = new SdpConnection(value);
@@ -287,16 +289,8 @@ module.exports = function (MsrpSdk) {
             this.key = value;
             break;
           case 'a=':
-            let aName;
-            const colonIndex = value.indexOf(':');
-            if (colonIndex === -1) {
-              aName = value;
-              value = null;
-            } else {
-              aName = value.substr(0, colonIndex);
-              value = value.substr(colonIndex + 1);
-            }
-            this.addAttribute(aName, value);
+            const { aName, aValue } = parseAttribute(value);
+            this.addAttribute(aName, aValue);
             break;
           default:
             MsrpSdk.Logger.warn(`[SDP]: Unexpected type (within media): ${line}`);
@@ -307,17 +301,12 @@ module.exports = function (MsrpSdk) {
     }
 
     toString() {
-      let m = '';
+      let m = `${this.media} ${this.port} ${this.proto} ${this.format}`;
 
-      m += `${this.media} `;
-      m += `${this.port} `;
-      m += `${this.proto} `;
-      m += this.format;
-
-      if (this.title) {
-        m += `\r\ni=${this.title}`;
+      if (this.info) {
+        m += `\r\ni=${this.info}`;
       }
-      if (this.connection) {
+      if (this.connection && this.connection.address) {
         m += `\r\nc=${this.connection}`;
       }
       this.bandwidth.forEach(bw => {
@@ -326,21 +315,19 @@ module.exports = function (MsrpSdk) {
       if (this.key) {
         m += `\r\nk=${this.key}`;
       }
-      this.attributeNameOrder.forEach(aName => {
-        this.attributes[aName].forEach(aValue => {
-          if (aValue === 0) {
-            aValue = '0';
-          }
-          m += `\r\na=${aName}${aValue ? `:${aValue}` : ''}`;
-        });
+      this.attributes.forEach(attr => {
+        const aValue = attr.value === 0 ? '0' : attr.value;
+        m += `\r\na=${attr.name}${aValue ? `:${aValue}` : ''}`;
       });
 
       return m;
     }
   }
 
-  class Sdp {
+  class Sdp extends AttributesContainer {
     constructor(sdp) {
+      super();
+
       if (sdp) {
         // Parse the provided SDP
         if (!this.parse(sdp)) {
@@ -365,8 +352,20 @@ module.exports = function (MsrpSdk) {
       this.timing = [new SdpTiming()];
       this.timezone = null;
       this.key = null;
-      this.resetAttributes();
+      this.attributes = [];
       this.media = [];
+    }
+
+    hasMsrp() {
+      return this.media.some(m => m.isMsrp());
+    }
+
+    getMsrpMedia() {
+      return this.media.find(m => m.isMsrp());
+    }
+
+    getMsrpMediaIndex() {
+      return this.media.findIndex(m => m.isMsrp());
     }
 
     getConnectionMode(index = 0) {
@@ -377,52 +376,48 @@ module.exports = function (MsrpSdk) {
       return getConnectionMode(this.media[index]) || getConnectionMode(this) || 'sendrecv';
     }
 
-    addAttribute(name, value) {
-      if (!this.attributes[name]) {
-        this.attributes[name] = [];
-        this.attributeNameOrder.push(name);
-      }
-      if (value && typeof value === 'string') {
-        this.attributes[name].push(value);
-      } else if (Array.isArray(value)) {
-        this.attributes[name].push(...value);
-      }
+    getMsrpConnectionMode() {
+      const mIndex = this.getMsrpMediaIndex();
+      return mIndex === -1 ? 'inactive' : this.getConnectionMode(mIndex);
     }
 
-    removeAttribute(name) {
-      if (this.attributes[name]) {
-        delete this.attributes[name];
-        this.attributeNameOrder.splice(
-          this.attributeNameOrder.indexOf(name), 1);
+    getMsrpConnection() {
+      const media = this.getMsrpMedia();
+      if (media && media.connection && media.connection.address) {
+        return media.connection;
       }
-    }
-
-    replaceAttribute(oldName, newName, newValue) {
-      if (this.attributes[oldName]) {
-        delete this.attributes[oldName];
-        this.addAttribute(newName, newValue);
-        this.attributeNameOrder.splice(this.attributeNameOrder.lastIndexOf(newName), 1);
-        this.attributeNameOrder.splice(
-          this.attributeNameOrder.indexOf(oldName), 1, newName);
+      if (this.connection && this.connection.address) {
+        return this.connection;
       }
-    }
-
-    resetAttributes() {
-      this.attributeNameOrder = [];
-      this.attributes = {};
+      return null;
     }
 
     // eslint-disable-next-line complexity
     parse(sdp) {
-      let line, value, colonIndex, aName;
+      let line, value;
+
       const lines = sdp.split(lineEnd);
+      if (lines[lines.length - 1] === '') {
+        // SDP ends in CRLF; Remove last array element
+        lines.pop();
+      }
 
       this.reset();
 
-      if (lines[lines.length - 1] === '') {
-        // SDP ends in CRLF; remove final array index
-        lines.pop();
-      }
+      // SDP Syntax per RFC-4566
+      // session-description = proto-version
+      //                       origin-field
+      //                       session-name-field
+      //                       information-field [OPTIONAL]
+      //                       uri-field [OPTIONAL]
+      //                       email-fields [OPTIONAL]
+      //                       phone-fields [OPTIONAL]
+      //                       connection-field [OPTIONAL]
+      //                       bandwidth-fields [OPTIONAL]
+      //                       time-fields
+      //                       key-field [OPTIONAL]
+      //                       attribute-fields [OPTIONAL]
+      //                       media-descriptions [OPTIONAL]
 
       if (lines.length < 4) {
         MsrpSdk.Logger.warn(`[SDP]: Unexpected SDP length: ${lines.length}`);
@@ -436,16 +431,16 @@ module.exports = function (MsrpSdk) {
       }
 
       line = lines.shift();
-      if (line.substr(0, 2) === 'o=') {
-        this.origin = new SdpOrigin(line.substr(2));
+      if (line.indexOf('o=') === 0) {
+        this.origin = new SdpOrigin(line.slice(2));
       } else {
         MsrpSdk.Logger.warn(`[SDP]: Unexpected SDP origin: ${line}`);
         return false;
       }
 
       line = lines.shift();
-      if (line.substr(0, 2) === 's=') {
-        this.sessionName = line.substr(2);
+      if (line.indexOf('s=') === 0) {
+        this.sessionName = line.slice(2);
       } else {
         MsrpSdk.Logger.warn(`[SDP]: Unexpected SDP session name: ${line}`);
         return false;
@@ -454,7 +449,7 @@ module.exports = function (MsrpSdk) {
       // Process any other optional pre-timing lines
       while (lines.length > 0 && lines[0].charAt(0) !== 't') {
         line = lines.shift();
-        value = line.substr(2);
+        value = line.slice(2);
 
         switch (line.substr(0, 2)) {
           case 'i=':
@@ -488,14 +483,13 @@ module.exports = function (MsrpSdk) {
 
       this.timing = [];
       while (lines.length > 0 && lines[0].charAt(0) === 't') {
-        line = lines.shift().substr(2);
+        line = lines.shift().slice(2);
         // Append any following r-lines
         while (lines.length > 0 && lines[0].charAt(0) === 'r') {
           line += `\r\n${lines.shift()}`;
         }
 
-        value = new SdpTiming(line);
-        this.timing.push(value);
+        this.timing.push(new SdpTiming(line));
       }
 
       if (this.timing.length === 0) {
@@ -506,7 +500,7 @@ module.exports = function (MsrpSdk) {
       // Process any optional pre-media lines
       while (lines.length > 0 && lines[0].charAt(0) !== 'm') {
         line = lines.shift();
-        value = line.substr(2);
+        value = line.slice(2);
 
         switch (line.substr(0, 2)) {
           case 'z=':
@@ -516,15 +510,8 @@ module.exports = function (MsrpSdk) {
             this.key = value;
             break;
           case 'a=':
-            colonIndex = value.indexOf(':');
-            if (colonIndex === -1) {
-              aName = value;
-              value = null;
-            } else {
-              aName = value.substr(0, colonIndex);
-              value = value.substr(colonIndex + 1);
-            }
-            this.addAttribute(aName, value);
+            const { aName, aValue } = parseAttribute(value);
+            this.addAttribute(aName, aValue);
             break;
           default:
             MsrpSdk.Logger.warn(`[SDP]: Unexpected SDP line (pre-media): ${line}`);
@@ -533,24 +520,20 @@ module.exports = function (MsrpSdk) {
       }
 
       while (lines.length > 0 && lines[0].charAt(0) === 'm') {
-        line = lines.shift().substr(2);
+        line = lines.shift().slice(2);
         // Append any following lines up to the next m-line
         while (lines.length > 0 && lines[0].charAt(0) !== 'm') {
           line += `\r\n${lines.shift()}`;
         }
 
-        value = new SdpMedia(line);
-        this.media.push(value);
+        this.media.push(new SdpMedia(line));
       }
 
       return true;
     }
 
     toString() {
-      let sdp = '';
-      sdp += `v=${this.version}\r\n`;
-      sdp += `o=${this.origin}\r\n`;
-      sdp += `s=${this.sessionName}\r\n`;
+      let sdp = `v=${this.version}\r\no=${this.origin}\r\ns=${this.sessionName}\r\n`;
       if (this.sessionInfo) {
         sdp += `i=${this.sessionInfo}\r\n`;
       }
@@ -563,7 +546,7 @@ module.exports = function (MsrpSdk) {
       if (this.phone) {
         sdp += `p=${this.phone}\r\n`;
       }
-      if (this.connection) {
+      if (this.connection && this.connection.address) {
         sdp += `c=${this.connection}\r\n`;
       }
       this.bandwidth.forEach(bw => {
@@ -578,21 +561,18 @@ module.exports = function (MsrpSdk) {
       if (this.key) {
         sdp += `k=${this.key}\r\n`;
       }
+      this.attributes.forEach(attr => {
+        const aValue = attr.value === 0 ? '0' : attr.value;
+        sdp += `a=${attr.name}${aValue ? `:${aValue}` : ''}\r\n`;
+      });
       this.media.forEach(m => {
         sdp += `m=${m}\r\n`;
-      });
-      this.attributeNameOrder.forEach(aName => {
-        this.attributes[aName].forEach(aValue => {
-          if (aValue === 0) {
-            aValue = '0';
-          }
-          sdp += `a=${aName}${aValue ? `:${aValue}` : ''}\r\n`;
-        });
       });
 
       return sdp;
     }
   }
 
+  MsrpSdk.SdpMedia = SdpMedia;
   MsrpSdk.Sdp = Sdp;
 };

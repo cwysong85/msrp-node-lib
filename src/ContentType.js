@@ -86,7 +86,7 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Encodes the content type as an SDP type selector, as defined in RFC 5547.
-     * @returns {String} The encoded selector value.
+     * @returns {string} The encoded selector value.
      */
     toSdpTypeSelector() {
       let selector = '', param;
@@ -171,7 +171,7 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Encodes the content type as an Content-Type header, as defined in RFC 2045.
-     * @returns {String} The encoded header value.
+     * @returns {string} The encoded header value.
      */
     toContentTypeHeader() {
       let header = '',

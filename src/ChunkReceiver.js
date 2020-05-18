@@ -49,9 +49,9 @@ module.exports = function (MsrpSdk) {
     /**
      * Processes subsequent chunks of the message as they arrive.
      *
-     * @param {Message.Request} chunk - The received chunk.
+     * @param {object} chunk - The received chunk.
      * This must be a chunk of the same message (i.e. the Message-ID must match that of the first chunk).
-     * @returns {Boolean} True if the chunk was successfully handled, false if the transfer should be aborted.
+     * @returns {boolean} True if the chunk was successfully handled, false if the transfer should be aborted.
      */
     processChunk(chunk) {
       if (!chunk || !chunk.byteRange) {
@@ -182,7 +182,7 @@ module.exports = function (MsrpSdk) {
     /**
      * Checks whether all expected chunks have been received.
      *
-     * @returns {Boolean} True if all chunks have been received, or if the
+     * @returns {boolean} True if all chunks have been received, or if the
      * message has been aborted. False if we still expect further chunks.
      */
     isComplete() {

@@ -7,7 +7,7 @@ module.exports = function (MsrpSdk) {
   /**
    * Parses a raw websocket message and returns a Message object.
    *
-   * @param {string} data - Raw string received from the socket.
+   * @param {string} msg - Raw string received from the socket.
    * @returns {object} Message object, or null if there an error parsing the message.
    */
   MsrpSdk.parseMessage = function (msg = '') {
@@ -85,7 +85,7 @@ module.exports = function (MsrpSdk) {
   /**
    * Remove any leading or trailing whitespace from the provided string.
    * @param {string} str The string to process.
-   * @returns {String} The trimmed string.
+   * @returns {string} The trimmed string.
    */
   function chomp(str) {
     return str.replace(/^\s+/, '').replace(/\s+$/, '');
@@ -94,7 +94,7 @@ module.exports = function (MsrpSdk) {
   /**
    * Remove double quotes from the start and end of the string, if present.
    * @param {string} str The string to process.
-   * @returns {String} The unquoted string.
+   * @returns {string} The unquoted string.
    */
   function unq(str) {
     return str.replace(/^"/, '').replace(/"$/, '');

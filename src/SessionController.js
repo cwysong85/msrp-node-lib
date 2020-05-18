@@ -15,8 +15,8 @@ module.exports = function (MsrpSdk) {
     }
 
     /**
-     * Adds a new session
-     * @param {Session} Session
+     * Adds a new session.
+     * @param {object} session - The Session instance.
      */
     addSession(session) {
       this.sessionsMap.set(session.sid, session);
@@ -38,7 +38,7 @@ module.exports = function (MsrpSdk) {
     /**
      * Gets a session by session ID
      * @param {string} sessionId Session ID
-     * @return {Session}          Session
+     * @return {object} The Session instance.
      */
     getSession(sessionId) {
       return this.sessionsMap.get(sessionId);
@@ -46,7 +46,7 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Removes a session
-     * @param {Session} session Session
+     * @param {object} session The Session instance
      */
     removeSession(session) {
       if (this.sessionsMap.has(session.sid)) {
@@ -60,7 +60,7 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Checks if the socket for the given session is used by another session.
-     * @param {Session} session Session
+     * @param {object} session The Session instance
      * @returns {boolean} Returns true if socket is reused
      */
     isSocketReused(session) {
@@ -75,16 +75,12 @@ module.exports = function (MsrpSdk) {
 
   /**
    * Helper function for forwarding a session's events to the session controller
-   * @param {Session} session Session
+   * @param {object} session The Session instance
    * @param {SessionController} sessionController Session controller
    */
   function forwardSessionEvents(session, sessionController) {
     session.on('message', message => {
       sessionController.emit('message', session, message);
-    });
-
-    session.on('update', () => {
-      sessionController.emit('update', session);
     });
 
     // Socket events

@@ -77,27 +77,30 @@ session.on('end', () => {
 
 Create SDP Answer from a given SDP Offer:
 ```
-session.setDescription(sdpOffer, () => {
-    console.log('Successfully set the remote SDP offer. Now get the SDP answer.');
-    session.getDescription(sdpAnswer => {
+session.setDescription(sdpOffer)
+    .then(() => {
+        console.log('Successfully set the remote SDP offer. Now get the SDP answer.');
+        return session.getDescription();
+    })
+    .then(sdpAnswer => {
         console.log(`Created local SDP answer: ${sdpAnswer}`);
         ...
-    }, err => {
-        console.error(`Failed to get local SDP answer. ${err}`);
+    })
+    .catch(err => {
+        logger.error(`Failed to get SDP answer. ${err}`);
     });
-}, err => {
-    logger.error(`Failed to set remote SDP offer. ${err}`);
-});
 ```
 
 Create SDP Offer:
 ```
-session.getDescription(sdpOffer => {
-    console.log(`Created local SDP offer: ${sdpOffer}`);
-    ...
-}, err => {
-    console.error(`Failed to get local SDP offer. ${err}`);
-});
+session.getDescription()
+    .then(sdpOffer => {
+        console.log(`Created local SDP offer: ${sdpOffer}`);
+        ...
+    })
+    .catch(err => {
+        console.error(`Failed to get local SDP offer. ${err}`);
+    });
 ```
 
 Send message:

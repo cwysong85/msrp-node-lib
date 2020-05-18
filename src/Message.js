@@ -76,6 +76,7 @@ module.exports = function (MsrpSdk) {
       this.method = method;
       this.contentType = null;
       this.body = null;
+      this.byteRange = null;
     }
 
     addBody(type, body) {
@@ -144,7 +145,7 @@ module.exports = function (MsrpSdk) {
         }
         msg = msg.concat('Content-Type: ', type, lineEnd, lineEnd);
 
-        if (this.body instanceof String || typeof this.body === 'string') {
+        if (typeof this.body === 'string') {
           msg = msg.concat(this.body, lineEnd, end);
         } else {
           msg = msg.concat(this.body.toString(), lineEnd, end);

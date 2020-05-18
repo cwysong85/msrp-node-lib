@@ -277,7 +277,7 @@ module.exports = function (MsrpSdk) {
 
   function incomingSend(request, socket, session, toUri) {
     // Check if remote endpoint shouldn't be sending messages because of the recvonly attribute
-    const connectionMode = session.remoteSdp.getConnectionMode();
+    const connectionMode = session.remoteSdp.getMsrpConnectionMode();
     if (connectionMode === 'recvonly' || connectionMode === 'inactive') {
       MsrpSdk.Logger.warn(`[SocketHandler]: MSRP data is not allowed when session requested "a=${connectionMode}" in SDP`);
       sendResponse(request, socket, toUri.uri, MsrpSdk.Status.FORBIDDEN);
@@ -355,7 +355,7 @@ module.exports = function (MsrpSdk) {
    * @param {object} socket Socket to be used for sending the report
    * @param {object} routePaths The message paths.
    * @param {Array} routePaths.toPath The To-Path uris.
-   * @param {string} routePaths.fromPath The From-Path uris.
+   * @param {Array} routePaths.fromPath The From-Path uris.
    * @param {object} req Request asking for the report
    * @param {number} status Status to be included in the report
    */
