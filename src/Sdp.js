@@ -15,20 +15,6 @@ module.exports = function (MsrpSdk) {
     return attr ? attr.name : null;
   }
 
-  function parseAttribute(line) {
-    let aName, aValue;
-    const colonIndex = line.indexOf(':');
-    if (colonIndex === -1) {
-      aName = line;
-      aValue = null;
-    } else {
-      aName = line.substr(0, colonIndex);
-      aValue = line.substr(colonIndex + 1);
-    }
-    return { aName, aValue };
-  }
-
-
   class SdpOrigin {
     constructor(origin) {
       if (origin) {
@@ -177,6 +163,23 @@ module.exports = function (MsrpSdk) {
       this.attributes.push({ name, value });
     }
 
+    parseAttribute(line) {
+      if (!line) {
+        return null;
+      }
+      let name, value;
+      const colonIndex = line.indexOf(':');
+      if (colonIndex === -1) {
+        name = line;
+        value = null;
+      } else {
+        name = line.substr(0, colonIndex);
+        value = line.substr(colonIndex + 1);
+      }
+      this.addAttribute(name, value);
+      return { name, value };
+    }
+
     setAttribute(name, value) {
       const idx = this.attributes.findIndex(attr => attr.name === name);
       if (idx === -1) {
@@ -289,8 +292,7 @@ module.exports = function (MsrpSdk) {
             this.key = value;
             break;
           case 'a=':
-            const { aName, aValue } = parseAttribute(value);
-            this.addAttribute(aName, aValue);
+            this.parseAttribute(value);
             break;
           default:
             MsrpSdk.Logger.warn(`[SDP]: Unexpected type (within media): ${line}`);
@@ -510,8 +512,7 @@ module.exports = function (MsrpSdk) {
             this.key = value;
             break;
           case 'a=':
-            const { aName, aValue } = parseAttribute(value);
-            this.addAttribute(aName, aValue);
+            this.parseAttribute(value);
             break;
           default:
             MsrpSdk.Logger.warn(`[SDP]: Unexpected SDP line (pre-media): ${line}`);
