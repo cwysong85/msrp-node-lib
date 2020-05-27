@@ -3,7 +3,7 @@
 // eslint-disable-next-line max-lines-per-function
 module.exports = function (MsrpSdk) {
 
-  const MSRP_START_REGEX = /MSRP (\S+) /g;
+  const MSRP_REGEX = /MSRP (\S+) [\s\S]*?\r\n-{7}\1[$#+]\r\n/g;
   const RCV_TIMEOUT = 30000; // 30 seconds
   const MAX_BUFFERED_DATA = 1024 * 1024; // 1 MB
 
@@ -14,11 +14,6 @@ module.exports = function (MsrpSdk) {
   const activeSenders = [];
   let receiverCheckInterval = null;
   let senderTimeout = null;
-
-  function createMessageRegex(tid = '') {
-    const escapedTID = tid.replace(/[.*+?|()[\]{}\\$^]/g, '\\$&');
-    return new RegExp(`MSRP ${escapedTID} [\\s\\S]*?\\r\\n-{7}${escapedTID}[$#+]\\r\\n`, 'g');
-  }
 
   function getSocketInfo(socket) {
     const socketAddr = socket.address() || {};
@@ -65,50 +60,44 @@ module.exports = function (MsrpSdk) {
     });
 
     socket.on('data', data => {
-      MsrpSdk.Logger.debug(`[SocketHandler]: Data received:\r\n${data}`);
+      MsrpSdk.Logger.debug('[SocketHandler]: Received >>> ', data);
 
-      bufferedData += data;
+      if (bufferedData) {
+        // Prepend the buffered data
+        data = bufferedData + data;
+      }
 
       // Find the start of the first message
-      MSRP_START_REGEX.lastIndex = 0;
-      let startMatch = MSRP_START_REGEX.exec(bufferedData);
+      MSRP_REGEX.lastIndex = 0;
+      let msgMatch = MSRP_REGEX.exec(data);
       let lastIndex = 0;
 
-      while (startMatch) {
+      while (msgMatch) {
         try {
-          // Create a unique message RegExp including the transaction Id
-          const tid = startMatch[1];
-          const msgRegex = createMessageRegex(tid);
-          msgRegex.lastIndex = startMatch.index;
+          // Move lastIndex to the end of the matched message
+          lastIndex = MSRP_REGEX.lastIndex;
 
-          const msgMatch = msgRegex.exec(bufferedData);
-          if (msgMatch) {
-            // Move lastIndex to the end of the matched message
-            lastIndex = msgRegex.lastIndex;
-            MSRP_START_REGEX.lastIndex = lastIndex;
-
-            const message = msgMatch[0];
-            if (MsrpSdk.Config.traceMsrp) {
-              MsrpSdk.Logger.info(`[SocketHandler]: MSRP received:\r\n${message}`);
-            }
-            const parsedMessage = MsrpSdk.parseMessage(message);
-            if (!parsedMessage) {
-              MsrpSdk.Logger.warn(`[SocketHandler]: Unable to parse incoming message. Message was discarded. Message: ${message}`);
-            } else if (parsedMessage.method) {
-              handleIncomingRequest(parsedMessage, socket);
-            } else {
-              handleIncomingResponse(parsedMessage);
-            }
+          const [message] = msgMatch;
+          if (MsrpSdk.Config.traceMsrp) {
+            MsrpSdk.Logger.info(`[SocketHandler]: MSRP received:\r\n${message}`);
+          }
+          const parsedMessage = MsrpSdk.parseMessage(message);
+          if (!parsedMessage) {
+            MsrpSdk.Logger.warn(`[SocketHandler]: Unable to parse incoming message. Message was discarded. Message: ${message}`);
+          } else if (parsedMessage.method) {
+            handleIncomingRequest(parsedMessage, socket);
+          } else {
+            handleIncomingResponse(parsedMessage);
           }
         } catch (e) {
           MsrpSdk.Logger.error('[SocketHandler]: Exception handling message.', e);
         }
         // Look for next message
-        startMatch = MSRP_START_REGEX.exec(bufferedData);
+        msgMatch = MSRP_REGEX.exec(data);
       }
-      if (lastIndex > 0) {
-        bufferedData = bufferedData.slice(lastIndex);
-      }
+
+      // Buffer any remaining data that hasn't been processed
+      bufferedData = lastIndex === 0 ? data : data.slice(lastIndex);
 
       if (bufferedData.length > MAX_BUFFERED_DATA) {
         MsrpSdk.Logger.warn('[SocketHandler]: Buffered data has exceeded max allowed size. Discard all buffered data.');

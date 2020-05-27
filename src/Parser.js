@@ -220,7 +220,7 @@ module.exports = function (MsrpSdk) {
     if (headerArray.length !== 1) {
       return false;
     }
-    const value = headerArray[0];
+    const [value] = headerArray;
     const rangeSepIndex = value.indexOf('-');
     const totalSepIndex = value.indexOf('/', rangeSepIndex);
 

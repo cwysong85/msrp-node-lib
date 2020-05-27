@@ -18,7 +18,7 @@
     "portfinder": "^1.0.20"
   },
   "devDependencies": {
-    "eslint": "6.8.0"
+    "eslint": "7.1.0"
   },
   "license": "MIT",
   "main": "src/MsrpSdk.js"
