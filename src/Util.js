@@ -61,7 +61,7 @@ module.exports = function (MsrpSdk) {
           return 'Message-ID';
       }
       return header.split('-')
-        .map(part => part.charAt(0).toUpperCase() + part.substring(1))
+        .map(part => part[0].toUpperCase() + part.substring(1))
         .join('-');
     },
     isEmpty(map) {

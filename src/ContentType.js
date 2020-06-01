@@ -47,7 +47,7 @@ module.exports = function (MsrpSdk) {
       // Subtype
       endIndex = position;
       while (endIndex < selector.length) {
-        if (selector.charAt(endIndex) === ';') {
+        if (selector[endIndex] === ';') {
           break;
         }
         endIndex++;
@@ -57,7 +57,7 @@ module.exports = function (MsrpSdk) {
 
       // Parameters
       this.params = {};
-      while (selector.charAt(endIndex) === ';') {
+      while (selector[endIndex] === ';') {
         // Parse content type parameter
         endIndex = selector.indexOf('=', position);
         if (endIndex === -1) {
@@ -67,7 +67,7 @@ module.exports = function (MsrpSdk) {
         param = selector.slice(position, endIndex);
         position = endIndex + 1;
 
-        if (selector.charAt(position) !== '"') {
+        if (selector[position] !== '"') {
           // Unexpected input
           return;
         }
@@ -122,7 +122,7 @@ module.exports = function (MsrpSdk) {
       // Subtype
       endIndex = position;
       while (endIndex < header.length) {
-        if (header.charAt(endIndex) === ';') {
+        if (header[endIndex] === ';') {
           break;
         }
         endIndex++;
@@ -132,7 +132,7 @@ module.exports = function (MsrpSdk) {
 
       // Parameters
       this.params = {};
-      while (header.charAt(endIndex) === ';') {
+      while (header[endIndex] === ';') {
         // Parse content type parameter
         endIndex = header.indexOf('=', position);
         if (endIndex === -1) {
@@ -142,14 +142,14 @@ module.exports = function (MsrpSdk) {
         param = header.slice(position, endIndex);
         position = endIndex + 1;
 
-        if (header.charAt(position) === '"') {
+        if (header[position] === '"') {
           position++;
           endIndex = header.indexOf('"', position);
           if (endIndex === -1) {
             // Unexpected input
             return;
           }
-          while (header.charAt(endIndex - 1) === '\\') {
+          while (header[endIndex - 1] === '\\') {
             endIndex = header.indexOf('"', endIndex + 1);
             if (endIndex === -1) {
               // Unexpected input

@@ -74,22 +74,13 @@ module.exports = function (MsrpSdk) {
         return null;
       }
       msgObj.body = msg.substring(startIndex, endIndex);
-      msgObj.continuationFlag = msg.charAt(endIndex + lineEnd.length + endLineNoFlag.length);
+      msgObj.continuationFlag = msg[endIndex + lineEnd.length + endLineNoFlag.length];
     } else {
-      msgObj.continuationFlag = msg.charAt(startIndex + endLineNoFlag.length);
+      msgObj.continuationFlag = msg[startIndex + endLineNoFlag.length];
     }
 
     return msgObj;
   };
-
-  /**
-   * Remove any leading or trailing whitespace from the provided string.
-   * @param {string} str The string to process.
-   * @returns {string} The trimmed string.
-   */
-  function chomp(str) {
-    return str.replace(/^\s+/, '').replace(/\s+$/, '');
-  }
 
   /**
    * Remove double quotes from the start and end of the string, if present.
@@ -97,7 +88,10 @@ module.exports = function (MsrpSdk) {
    * @returns {string} The unquoted string.
    */
   function unq(str) {
-    return str.replace(/^"/, '').replace(/"$/, '');
+    if (str[0] === '"' && str[str.length - 1] === '"') {
+      return str.slice(1, -1);
+    }
+    return str;
   }
 
   // Extracts the next header after startIndex, and adds it to the provided message object
@@ -109,11 +103,11 @@ module.exports = function (MsrpSdk) {
 
     // If there is a body, there will be an extra CRLF between the headers and
     // the body. If there is no body, we stop at the end-line.
-    if (msg.substr(startIndex, 2) === '\r\n' || msg.substr(startIndex, endLineNoFlag.length) === endLineNoFlag) {
+    if (msg.substr(startIndex, 2) === lineEnd || msg.substr(startIndex, endLineNoFlag.length) === endLineNoFlag) {
       return 0;
     }
 
-    const endIndex = msg.indexOf('\r\n', startIndex);
+    const endIndex = msg.indexOf(lineEnd, startIndex);
     if (endIndex === -1) {
       // Oops - invalid message
       MsrpSdk.Logger.warn('Error parsing header: no CRLF');
@@ -127,13 +121,13 @@ module.exports = function (MsrpSdk) {
       return -1;
     }
 
-    const name = chomp(msg.substring(startIndex, colonIndex));
+    const name = msg.substring(startIndex, colonIndex).trim();
     if (name.length === 0) {
       MsrpSdk.Logger.warn('Error parsing header: no name');
       return -1;
     }
 
-    const value = chomp(msg.substring(colonIndex + 1, endIndex));
+    const value = msg.substring(colonIndex + 1, endIndex).trim();
     if (name.length === 0) {
       MsrpSdk.Logger.warn('Error parsing header: no value');
       return -1;
@@ -155,7 +149,7 @@ module.exports = function (MsrpSdk) {
 
     // Look for the end of this parameter, starting after the equals sign
     endIndex = equalsIndex + 1;
-    if (str.charAt(endIndex) === '"') {
+    if (str[endIndex] === '"') {
       // Quoted string - find the end quote
       // We assume that the string cannot itself contain double quotes,
       // as RFC 2617 makes no mention of escape sequences.
@@ -173,8 +167,8 @@ module.exports = function (MsrpSdk) {
     }
 
     // Trim any whitespace/quotes
-    const name = chomp(str.substring(startIndex, equalsIndex));
-    const value = unq(chomp(str.substring(equalsIndex + 1, endIndex)));
+    const name = str.substring(startIndex, equalsIndex).trim();
+    const value = unq(str.substring(equalsIndex + 1, endIndex).trim());
 
     // Check we've got something sensible
     if (name.length === 0 || value.length === 0) {
@@ -229,20 +223,13 @@ module.exports = function (MsrpSdk) {
       return false;
     }
 
-    const range = {};
-    range.start = parseInt(chomp(value.substring(0, rangeSepIndex)), 10);
-    range.end = chomp(value.substring(rangeSepIndex + 1, totalSepIndex));
-    if (range.end === '*') {
-      range.end = -1;
-    } else {
-      range.end = parseInt(range.end, 10);
-    }
-    range.total = chomp(value.substring(totalSepIndex + 1));
-    if (range.total === '*') {
-      range.total = -1;
-    } else {
-      range.total = parseInt(range.total, 10);
-    }
+    const range = {
+      start: parseInt(value.substring(0, rangeSepIndex), 10),
+      end: value.substring(rangeSepIndex + 1, totalSepIndex).trim(),
+      total: value.substring(totalSepIndex + 1).trim()
+    };
+    range.end = range.end === '*' ? -1 : parseInt(range.end, 10);
+    range.total = range.total === '*' ? -1 : parseInt(range.total, 10);
 
     if (isNaN(range.start) || isNaN(range.end) || isNaN(range.total)) {
       MsrpSdk.Logger.warn(`Unexpected Byte-Range values: ${value}`);
@@ -346,8 +333,6 @@ module.exports = function (MsrpSdk) {
   }
 
   function parseContentDisposition(headerArray, msgObj) {
-    let index, splitParam;
-
     // We only expect MIME headers on SEND requests.  Ignore the header
     // if we find it on a response.
     if (msgObj instanceof MsrpSdk.Message.Response) {
@@ -367,18 +352,17 @@ module.exports = function (MsrpSdk) {
       return false;
     }
 
-    msgObj.contentDisposition = {};
-    msgObj.contentDisposition.type = chomp(splitValue.shift());
-    msgObj.contentDisposition.param = {};
-    for (index in splitValue) {
-      if (splitValue.hasOwnProperty(index)) {
-        splitParam = splitValue[index].split('=');
-        if (splitParam.length !== 2) {
-          MsrpSdk.Logger.warn(`Unexpected Content-Disposition param: ${splitValue[index]}`);
-          return false;
-        }
-        msgObj.contentDisposition.param[chomp(splitParam[0])] = unq(chomp(splitParam[1]));
+    msgObj.contentDisposition = {
+      type: splitValue.shift().trim(),
+      param: {}
+    };
+    for (let idx = 0; idx < splitValue.length; idx++) {
+      const splitParam = splitValue[idx].split('=');
+      if (splitParam.length !== 2) {
+        MsrpSdk.Logger.warn(`Unexpected Content-Disposition param: ${splitValue[idx]}`);
+        return false;
       }
+      msgObj.contentDisposition.param[splitParam[0].trim()] = unq(splitParam[1].trim());
     }
 
     return true;
@@ -391,7 +375,7 @@ module.exports = function (MsrpSdk) {
       return false;
     }
 
-    msgObj.messageId = chomp(headerArray[0]);
+    msgObj.messageId = headerArray[0].trim();
     if (msgObj.messageId.length < 1) {
       MsrpSdk.Logger.warn(`Unexpected Message-ID header: ${headerArray[0]}`);
       return false;

@@ -449,7 +449,7 @@ module.exports = function (MsrpSdk) {
       }
 
       // Process any other optional pre-timing lines
-      while (lines.length > 0 && lines[0].charAt(0) !== 't') {
+      while (lines.length > 0 && lines[0][0] !== 't') {
         line = lines.shift();
         value = line.slice(2);
 
@@ -484,13 +484,12 @@ module.exports = function (MsrpSdk) {
       }
 
       this.timing = [];
-      while (lines.length > 0 && lines[0].charAt(0) === 't') {
+      while (lines.length > 0 && lines[0][0] === 't') {
         line = lines.shift().slice(2);
         // Append any following r-lines
-        while (lines.length > 0 && lines[0].charAt(0) === 'r') {
+        while (lines.length > 0 && lines[0][0] === 'r') {
           line += `\r\n${lines.shift()}`;
         }
-
         this.timing.push(new SdpTiming(line));
       }
 
@@ -500,7 +499,7 @@ module.exports = function (MsrpSdk) {
       }
 
       // Process any optional pre-media lines
-      while (lines.length > 0 && lines[0].charAt(0) !== 'm') {
+      while (lines.length > 0 && lines[0][0] !== 'm') {
         line = lines.shift();
         value = line.slice(2);
 
@@ -520,10 +519,10 @@ module.exports = function (MsrpSdk) {
         }
       }
 
-      while (lines.length > 0 && lines[0].charAt(0) === 'm') {
+      while (lines.length > 0 && lines[0][0] === 'm') {
         line = lines.shift().slice(2);
         // Append any following lines up to the next m-line
-        while (lines.length > 0 && lines[0].charAt(0) !== 'm') {
+        while (lines.length > 0 && lines[0][0] !== 'm') {
           line += `\r\n${lines.shift()}`;
         }
 
