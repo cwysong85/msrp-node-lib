@@ -95,9 +95,9 @@ module.exports = function (MsrpSdk) {
       this.nextTid = MsrpSdk.Util.newTID();
 
       chunk.sender = this;
-      chunk.addHeader('message-id', this.messageId);
-      chunk.addHeader('success-report', 'yes');
-      chunk.addHeader('failure-report', 'yes');
+      chunk.addHeader('Message-ID', this.messageId);
+      chunk.addHeader('Success-Report', 'yes');
+      chunk.addHeader('Failure-Report', 'yes');
       if (this.aborted) {
         chunk.continuationFlag = MsrpSdk.Message.Flag.abort;
         return chunk;
@@ -113,9 +113,9 @@ module.exports = function (MsrpSdk) {
       if (this.size > 0) {
         if (this.sentBytes === 0) {
           // Include extra MIME headers on first chunk
-          chunk.addHeader('content-disposition', this.disposition || 'inline');
+          chunk.addHeader('Content-Disposition', this.disposition || 'inline');
           if (this.description) {
-            chunk.addHeader('content-description', this.description);
+            chunk.addHeader('Content-Description', this.description);
           }
         }
         chunk.contentType = this.contentType;

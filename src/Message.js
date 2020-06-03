@@ -2,13 +2,13 @@
 
 // eslint-disable-next-line max-lines-per-function
 module.exports = function (MsrpSdk) {
-  const lineEnd = '\r\n';
-
   const Flag = {
     continued: '+',
     end: '$',
     abort: '#'
   };
+
+  const OtherMimeHeaders = ['Content-ID', 'Content-Description', 'Content-Disposition'];
 
   /**
    * Parent class for all MSRP messages
@@ -109,12 +109,8 @@ module.exports = function (MsrpSdk) {
     }
 
     encode() {
-      let msg = '',
-        name,
-        type = this.contentType,
-        end = this.getEndLine();
-
-      if (this.body && (this.body instanceof String || typeof this.body === 'string')) {
+      let end = this.getEndLine();
+      if (this.body && typeof this.body === 'string') {
         // If the body contains the end-line, change the transaction ID
         while (this.body.indexOf(end) !== -1) {
           this.tid = MsrpSdk.Util.newTID();
@@ -122,34 +118,34 @@ module.exports = function (MsrpSdk) {
         }
       }
 
-      msg = msg.concat('MSRP ', this.tid, ' ', this.method, lineEnd);
-      msg = msg.concat('To-Path: ', this.toPath.join(' '), lineEnd);
-      msg = msg.concat('From-Path: ', this.fromPath.join(' '), lineEnd);
+      let msg = `MSRP ${this.tid} ${this.method}\r\n`;
+      msg += `To-Path: ${this.toPath.join(' ')}\r\n`;
+      msg += `From-Path: ${this.fromPath.join(' ')}\r\n`;
 
       if (this.byteRange) {
         const r = this.byteRange;
-        this.addHeader('byte-range', `${r.start}-${r.end < 0 ? '*' : r.end}/${r.total < 0 ? '*' : r.total}`);
+        this.addHeader('Byte-Range', `${r.start}-${r.end < 0 ? '*' : r.end}/${r.total < 0 ? '*' : r.total}`);
       }
 
-      for (name in this.headers) {
-        if (this.headers.hasOwnProperty(name)) {
-          msg = msg.concat(name, ': ', this.headers[name].join(' '), lineEnd);
+      for (const name in this.headers) {
+        if (this.headers.hasOwnProperty(name) && !OtherMimeHeaders.includes(name)) {
+          msg += `${name}: ${this.headers[name].join(' ')}\r\n`;
         }
       }
 
+      let type = this.contentType;
       if (type && this.body) {
-        // Content-Type is the last header, and a blank line separates the
-        // headers from the message body.
+        OtherMimeHeaders.forEach(name => {
+          if (this.headers.hasOwnProperty(name)) {
+            msg += `${name}: ${this.headers[name].join(' ')}\r\n`;
+          }
+        });
+
+        // Content-Type is the last header, and a blank line separates the headers from the message body.
         if (type instanceof MsrpSdk.ContentType) {
           type = type.toContentTypeHeader();
         }
-        msg = msg.concat('Content-Type: ', type, lineEnd, lineEnd);
-
-        if (typeof this.body === 'string') {
-          msg = msg.concat(this.body, lineEnd, end);
-        } else {
-          msg = msg.concat(this.body.toString(), lineEnd, end);
-        }
+        msg += `Content-Type: ${type}\r\n\r\n${this.body}\r\n${end}`;
       } else {
         msg += end;
       }
@@ -226,21 +222,13 @@ module.exports = function (MsrpSdk) {
     }
 
     encode() {
-      let msg = '',
-        name;
+      let msg = `MSRP ${this.tid} ${this.status}${this.comment ? ` ${this.comment}` : ''}\r\n`;
+      msg += `To-Path: ${this.toPath.join(' ')}\r\n`;
+      msg += `From-Path: ${this.fromPath.join(' ')}\r\n`;
 
-      msg = msg.concat('MSRP ', this.tid, ' ', this.status);
-      if (this.comment) {
-        msg = msg.concat(' ', this.comment);
-      }
-      msg += lineEnd;
-
-      msg = msg.concat('To-Path: ', this.toPath.join(' '), lineEnd);
-      msg = msg.concat('From-Path: ', this.fromPath.join(' '), lineEnd);
-
-      for (name in this.headers) {
+      for (const name in this.headers) {
         if (this.headers.hasOwnProperty(name)) {
-          msg = msg.concat(name, ': ', this.headers[name].join(' '), lineEnd);
+          msg += `${name}: ${this.headers[name].join(' ')}\r\n`;
         }
       }
 

@@ -353,11 +353,11 @@ module.exports = function (MsrpSdk) {
       const isSuccess = status === MsrpSdk.Status.OK;
       if (isSuccess) {
         // Note: As allowed in RFC4975, we only send the Success Report after receiving all message chunks.
-        if (!req.isComplete() || req.getHeader('success-report') !== 'yes') {
+        if (!req.isComplete() || req.getHeader('Success-Report') !== 'yes') {
           // No need to send a Success Report
           return;
         }
-      } else if (req.getHeader('failure-report') === 'no') {
+      } else if (req.getHeader('Failure-Report') === 'no') {
         // No need to send a Failure Report
         return;
       }
@@ -369,8 +369,8 @@ module.exports = function (MsrpSdk) {
 
       const statusHeader = `000 ${status} ${MsrpSdk.StatusComment[status]}`;
       const report = new MsrpSdk.Message.OutgoingRequest(routePaths, 'REPORT');
-      report.addHeader('message-id', req.messageId);
-      report.addHeader('status', statusHeader);
+      report.addHeader('Message-ID', req.messageId);
+      report.addHeader('Status', statusHeader);
       if (req.byteRange) {
         if (isSuccess) {
           report.byteRange = req.byteRange;

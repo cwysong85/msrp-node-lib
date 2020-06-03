@@ -9,6 +9,30 @@ module.exports = function (MsrpSdk) {
       .substr(2, length);
   }
 
+  // MSRP Header Fields (https://www.iana.org/assignments/msrp-parameters/msrp-parameters.xhtml)
+  const msrpHeaders = {
+    'To-Path': true,
+    'From-Path': true,
+    'Message-ID': true,
+    'Success-Report': true,
+    'Failure-Report': true,
+    'Byte-Range': true,
+    'Status': true,
+    'Expires': true,
+    'Min-Expires': true,
+    'Max-Expires': true,
+    'Use-Path': true,
+    'WWW-Authenticate': true,
+    'Authorization': true,
+    'Authentication-Info': true,
+    'Use-Nickname': true,
+    // content-stuff
+    'Content-ID': true,
+    'Content-Description': true,
+    'Content-Disposition': true,
+    'Content-Type': true
+  };
+
   /**
      * @namespace Shared utility functions
      * @private
@@ -52,21 +76,25 @@ module.exports = function (MsrpSdk) {
         .replace(/%2F/ig, '/');
     },
     normaliseHeader(name) {
+      if (!name || msrpHeaders[name]) {
+        return name;
+      }
       // Normalise the header capitalisation
-      const header = name ? name.toLowerCase() : '';
+      const header = name.toLowerCase();
       switch (header) {
-        case 'www-authenticate':
-          return 'WWW-Authenticate';
         case 'message-id':
           return 'Message-ID';
+        case 'www-authenticate':
+          return 'WWW-Authenticate';
+        case 'content-id':
+          return 'Content-ID';
       }
       return header.split('-')
         .map(part => part[0].toUpperCase() + part.substring(1))
         .join('-');
     },
     isEmpty(map) {
-      let property;
-      for (property in map) {
+      for (const property in map) {
         if (map.hasOwnProperty(property)) {
           return false;
         }
