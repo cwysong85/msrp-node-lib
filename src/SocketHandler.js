@@ -43,11 +43,11 @@ module.exports = function (MsrpSdk) {
     if (socket.writable || socket.readable) {
       // Socket is already connected
       socketInfo = getSocketInfo(socket);
-      MsrpSdk.Logger.debug(`[Server]: Socket connected. ${socketInfo}`);
+      MsrpSdk.Logger.info(`[Server]: Socket connected. ${socketInfo}`);
     } else {
       socket.on('connect', () => {
         socketInfo = getSocketInfo(socket);
-        MsrpSdk.Logger.debug(`[Server]: Socket connected. ${socketInfo}`);
+        MsrpSdk.Logger.info(`[Server]: Socket connected. ${socketInfo}`);
       });
     }
 

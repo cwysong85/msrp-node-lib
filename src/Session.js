@@ -221,9 +221,9 @@ module.exports = function (MsrpSdk) {
             session.startConnection();
           })
           .catch(error => {
-            MsrpSdk.Logger.error(`[Session]: An error ocurred while creating the local SDP: ${error.toString()}`);
+            MsrpSdk.Logger.error(`[Session]: An error ocurred while creating the local SDP. ${error}`);
             this.getHasNotRan = true;
-            reject(error);
+            reject(`${error}`);
           });
       });
     }
@@ -372,7 +372,7 @@ module.exports = function (MsrpSdk) {
         MsrpSdk.Logger.info(`[Session]: Socket for session ${this.sid} is being reused. Do not close it.`);
       } else {
         MsrpSdk.Logger.info(`[Session]: Closing socket for session ${this.sid}...`);
-        this.socket.end();
+        this.socket.destroy();
       }
 
       // Clean the session socket attribute
@@ -466,7 +466,7 @@ module.exports = function (MsrpSdk) {
         }
 
         // Create socket and connect
-        MsrpSdk.Logger.debug(`[Session]: Creating socket for session ${this.sid}...`);
+        MsrpSdk.Logger.info(`[Session]: Creating socket for session ${this.sid}. Local address: ${localEndpointUri.address}, Remote address: ${remoteEndpointUri.address}`);
         const socket = MsrpSdk.SocketHandler(new net.Socket());
         socket.connect({
           host: remoteEndpointUri.authority,
