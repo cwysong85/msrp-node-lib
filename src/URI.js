@@ -6,9 +6,10 @@ module.exports = function (MsrpSdk) {
       this.secure = false;
       this.user = null;
       this.authority = '';
-      this.port = null;
+      this.port = 2855;
       this.sessionId = '';
       this.transport = 'tcp';
+      this.address = '';
       if (uri) {
         this.uri = uri;
         this.parse(uri);
@@ -47,7 +48,7 @@ module.exports = function (MsrpSdk) {
       // If there's an ":" symbol in the authority, extract the port
       const portSepIndex = this.authority.indexOf(':');
       if (portSepIndex !== -1) {
-        this.port = this.authority.substr(portSepIndex + 1);
+        this.port = +this.authority.substr(portSepIndex + 1);
         this.authority = this.authority.substr(0, portSepIndex);
       }
       // Finally, separate the session ID from the transport
@@ -57,19 +58,16 @@ module.exports = function (MsrpSdk) {
       }
       this.sessionId = uri.substring(pathIndex + 1, semicolonIndex);
       this.transport = uri.substring(semicolonIndex + 1);
+      this.address = `${this.authority}:${this.port}`;
       return true;
     }
 
     toString() {
-      let uri = 'msrp';
       if (this.uri) {
         // Return the cached URI
         return this.uri;
       }
-      if (this.secure) {
-        uri += 's';
-      }
-      uri += '://';
+      let uri = this.secure ? 'msrps://' : 'msrp://';
       if (this.user) {
         uri += `${this.user}@`;
       }
@@ -83,7 +81,7 @@ module.exports = function (MsrpSdk) {
     }
 
     equals(uri) {
-      if (typeof uri === 'string' || uri instanceof String) {
+      if (typeof uri === 'string') {
         uri = new MsrpSdk.URI(uri);
       }
       if (!(uri instanceof Object)) {
@@ -97,7 +95,7 @@ module.exports = function (MsrpSdk) {
       if (uri.authority.toLowerCase() !== this.authority.toLowerCase()) {
         return false;
       }
-      if (parseInt(uri.port, 10) !== parseInt(this.port, 10)) {
+      if (uri.port !== this.port) {
         return false;
       }
       if (uri.sessionId !== this.sessionId) {

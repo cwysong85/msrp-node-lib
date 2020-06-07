@@ -460,7 +460,7 @@ module.exports = function (MsrpSdk) {
         const localEndpointUri = this.localEndpoint;
 
         // Do nothing if we are trying to connect to ourselves
-        if (localEndpointUri.authority === remoteEndpointUri.authority) {
+        if (localEndpointUri.address === remoteEndpointUri.address) {
           MsrpSdk.Logger.warn(`[Session]: Not creating a new TCP connection for session ${this.sid} because we would be talking to ourself. Returning...`);
           return;
         }
@@ -472,7 +472,7 @@ module.exports = function (MsrpSdk) {
           host: remoteEndpointUri.authority,
           port: remoteEndpointUri.port,
           localAddress: localEndpointUri.authority,
-          localPort: parseInt(localEndpointUri.port, 10)
+          localPort: localEndpointUri.port
         }, () => {
           // Assign socket to the session
           this.setSocket(socket);
@@ -482,7 +482,11 @@ module.exports = function (MsrpSdk) {
             fromPath: [this.localEndpoint.uri]
           }, 'SEND');
           try {
-            socket.write(request.encode(), () => {
+            const encodeMsg = request.encode();
+            socket.write(encodeMsg, () => {
+              if (MsrpSdk.Config.traceMsrp) {
+                MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+              }
               if (typeof callback === 'function') {
                 callback();
               }

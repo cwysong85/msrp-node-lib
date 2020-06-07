@@ -279,7 +279,11 @@ module.exports = function (MsrpSdk) {
       const isHeartbeatMessage = request.contentType === 'text/x-msrp-heartbeat';
       const isBodilessMessage = !request.body && !request.contentType;
       if (!isHeartbeatMessage && !isBodilessMessage) {
-        session.emit('message', request, session);
+        try {
+          session.emit('message', request, session);
+        } catch (err) {
+          MsrpSdk.Logger.error('[SocketHandler]: Error raising "message" event.', err);
+        }
       }
       // Return successful response: 200 OK
       sendResponse(request, socket, toUri.uri, MsrpSdk.Status.OK);
