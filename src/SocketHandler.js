@@ -4,6 +4,7 @@
 module.exports = function (MsrpSdk) {
 
   const MSRP_REGEX = /MSRP (\S+) [\s\S]*?\r\n-{7}\1[$#+]\r\n/g;
+
   const RCV_TIMEOUT = 30000; // 30 seconds
   const MAX_BUFFERED_DATA = 1024 * 1024; // 1 MB
 
@@ -60,7 +61,9 @@ module.exports = function (MsrpSdk) {
     });
 
     socket.on('data', data => {
-      MsrpSdk.Logger.debug('[SocketHandler]: Received >>> ', data);
+      if (!MsrpSdk.Config.isProduction) {
+        MsrpSdk.Logger.debug(`[SocketHandler]: Received >>>\r\n${data}`);
+      }
 
       if (bufferedData) {
         // Prepend the buffered data
@@ -79,11 +82,11 @@ module.exports = function (MsrpSdk) {
 
           const [message] = msgMatch;
           if (MsrpSdk.Config.traceMsrp) {
-            MsrpSdk.Logger.info(`[SocketHandler]: MSRP received:\r\n${message}`);
+            MsrpSdk.Logger.info(`[SocketHandler]: MSRP received:\r\n${MsrpSdk.Util.obfuscateMessage(message)}`);
           }
           const parsedMessage = MsrpSdk.parseMessage(message);
           if (!parsedMessage) {
-            MsrpSdk.Logger.warn(`[SocketHandler]: Unable to parse incoming message. Message was discarded. Message: ${message}`);
+            MsrpSdk.Logger.warn('[SocketHandler]: Unable to parse incoming message. Message was discarded.');
           } else if (parsedMessage.method) {
             handleIncomingRequest(parsedMessage, socket);
           } else {
@@ -426,7 +429,7 @@ module.exports = function (MsrpSdk) {
     const encodeMsg = msg.encode();
     socket.write(encodeMsg);
     if (MsrpSdk.Config.traceMsrp) {
-      MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+      MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${MsrpSdk.Util.obfuscateMessage(encodeMsg)}`);
     }
 
     // Check whether this sender has now completed

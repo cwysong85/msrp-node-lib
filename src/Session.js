@@ -8,8 +8,7 @@ const { EventEmitter } = require('events');
 // eslint-disable-next-line max-lines-per-function
 module.exports = function (MsrpSdk) {
   // Load configuration
-  const configuredBasePort = MsrpSdk.Config.outboundBasePort || 49152;
-  const configuredHighestPort = MsrpSdk.Config.outboundHighestPort || 65535;
+  const { outboundBasePort, outboundHighestPort } = MsrpSdk.Config;
 
   /**
    * MSRP Session
@@ -80,7 +79,7 @@ module.exports = function (MsrpSdk) {
     _getMediaDescriptions(localMsrpMedia) {
       // Return the corresponding media lines for the saved remote description
       if (!this.remoteSdp) {
-        localMsrpMedia.setAttribute('setup', MsrpSdk.Config.setup === 'passive' ? 'passive' : 'active');
+        localMsrpMedia.setAttribute('setup', MsrpSdk.Config.setup);
         return [localMsrpMedia];
       }
       return this.remoteSdp.media.map(remoteMedia => {
@@ -395,8 +394,7 @@ module.exports = function (MsrpSdk) {
      * Starts MSRP heartbeats
      */
     startHeartbeats() {
-      const heartbeatsInterval = MsrpSdk.Config.heartbeatsInterval || 5000;
-      const heartbeatsTimeout = MsrpSdk.Config.heartbeatsTimeout || 10000;
+      const { heartbeatsInterval, heartbeatsTimeout } = MsrpSdk.Config;
 
       MsrpSdk.Logger.debug(`[Session]: Starting MSRP heartbeats for session ${this.sid}...`);
 
@@ -515,10 +513,10 @@ module.exports = function (MsrpSdk) {
    */
   function getAssignedPort(setup) {
     if (setup === 'active') {
-      const randomBasePort = Math.ceil(Math.random() * (configuredHighestPort - configuredBasePort)) + configuredBasePort;
+      const randomBasePort = Math.ceil(Math.random() * (outboundHighestPort - outboundBasePort)) + outboundBasePort;
       return portfinder.getPortPromise({
         port: randomBasePort,
-        stopPort: configuredHighestPort
+        stopPort: outboundHighestPort
       });
     } else {
       return Promise.resolve(MsrpSdk.Config.port);

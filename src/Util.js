@@ -1,7 +1,8 @@
 'use strict';
 
 module.exports = function (MsrpSdk) {
-  const unixToNtpOffset = 2208988800;
+  const MSRP_OBFUSCATION_REGEX = /\r\n\r\n[\s\S]+(\r\n-{7}\S+[$#+]\r\n)$/;
+  const UNIX_TO_NTP_OFFSET = 2208988800;
 
   function genRandomString(length) {
     return Math.random()
@@ -102,11 +103,11 @@ module.exports = function (MsrpSdk) {
       return true;
     },
     ntpTimeToDate(ntpTime) {
-      return new Date((parseInt(ntpTime, 10) - unixToNtpOffset) * 1000);
+      return new Date((parseInt(ntpTime, 10) - UNIX_TO_NTP_OFFSET) * 1000);
     },
     dateToNtpTime(date) {
       const now = date ? date.getTime() : Date.now();
-      return Math.floor(now / 1000) + unixToNtpOffset;
+      return Math.floor(now / 1000) + UNIX_TO_NTP_OFFSET;
     },
     dateToIso8601() {
       return new Date().toISOString();
@@ -169,6 +170,12 @@ module.exports = function (MsrpSdk) {
         }
       });
       return chars.join('');
+    },
+    obfuscateMessage(msg) {
+      if (MsrpSdk.Config.obfuscateBody) {
+        return msg.replace(MSRP_OBFUSCATION_REGEX, '\r\n\r\n*****$1');
+      }
+      return msg;
     }
   };
 

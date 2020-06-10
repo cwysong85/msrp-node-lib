@@ -3,15 +3,34 @@
 
 const MsrpSdk = {};
 
-module.exports = function (config = {}, logger = null) {
+module.exports = function (config, logger) {
+  config = config || {};
 
-  // Set configuration
-  config.port = config.port || 2855;
-  config.host = config.host || '127.0.0.1';
-  config.signalingHost = config.signalingHost || config.host;
+  MsrpSdk.Config = {
+    acceptTypes: config.acceptTypes || 'text/plain',
+    enableHeartbeats: !!config.enableHeartbeats,
+    forwardSessionEvents: !!config.forwardSessionEvents,
+    heartbeatsInterval: config.heartbeatsInterval || 5000,
+    heartbeatsTimeout: config.heartbeatsTimeout || 10000,
+    host: config.host || '127.0.0.1',
+    isProduction: typeof config.isProduction === 'boolean' ? config.isProduction : process.env.NODE_ENV === 'production',
+    obfuscateBody: !!config.obfuscateBody,
+    outboundBasePort: config.outboundBasePort || 49152,
+    outboundHighestPort: config.outboundHighestPort || 65535,
+    port: config.port || 2855,
+    sessionName: config.sessionName || '-',
+    setup: config.setup === 'passive' ? 'passive' : 'active',
+    signalingHost: config.signalingHost || config.host || '127.0.0.1',
+    socketTimeout: config.socketTimeout || 0,
+    traceMsrp: !!config.traceMsrp
+  };
 
-  MsrpSdk.Config = config;
-  MsrpSdk.Logger = logger || console;
+  MsrpSdk.Logger = logger || {
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {}
+  };
 
   if (!MsrpSdk.Logger.warn) {
     if (typeof MsrpSdk.Logger.warning === 'function') {
