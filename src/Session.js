@@ -7,9 +7,6 @@ const { EventEmitter } = require('events');
 
 // eslint-disable-next-line max-lines-per-function
 module.exports = function (MsrpSdk) {
-  // Load configuration
-  const { outboundBasePort, outboundHighestPort } = MsrpSdk.Config;
-
   /**
    * MSRP Session
    * @class
@@ -506,18 +503,43 @@ module.exports = function (MsrpSdk) {
     }
   }
 
+  const { outboundBasePort, outboundHighestPort } = MsrpSdk.Config;
+  portfinder.basePort = outboundBasePort;
+  portfinder.highestPort = outboundHighestPort;
+
+  // Start at a random port between the range
+  let nextBasePort = outboundBasePort + Math.floor(Math.random() * (outboundHighestPort - outboundBasePort));
+
   /**
-   * Helper function for getting the local port to be used in the session
-   * @param {string} setup Local setup line content
-   * @return {Promise<number>} Local port to be used in the session
+   * Helper function for getting the local port to be used in the session.
+   *
+   * @param {string} setup Local setup line content.
+   * @param {boolean} [finalAttempt=false] Indicates whether this should be the final attempt.
+   * @return {Promise<number>} Local port to be used in the session.
    */
-  function getAssignedPort(setup) {
+  function getAssignedPort(setup, finalAttempt = false) {
     if (setup === 'active') {
-      const randomBasePort = Math.ceil(Math.random() * (outboundHighestPort - outboundBasePort)) + outboundBasePort;
+      if (nextBasePort > outboundHighestPort) {
+        nextBasePort = outboundBasePort;
+      }
+      const port = nextBasePort;
       return portfinder.getPortPromise({
-        port: randomBasePort,
+        port,
         stopPort: outboundHighestPort
-      });
+      })
+        .then(assignedPort => {
+          nextBasePort = Math.max(assignedPort + 1, nextBasePort);
+          return assignedPort;
+        })
+        .catch(err => {
+          if (!finalAttempt && port > outboundBasePort) {
+            // Retry again from the beginning
+            nextBasePort = outboundBasePort;
+            return getAssignedPort(setup, true);
+          } else {
+            return Promise.reject(err);
+          }
+        });
     } else {
       return Promise.resolve(MsrpSdk.Config.port);
     }

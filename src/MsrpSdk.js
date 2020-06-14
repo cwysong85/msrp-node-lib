@@ -25,6 +25,8 @@ module.exports = function (config, logger) {
     traceMsrp: !!config.traceMsrp
   };
 
+  MsrpSdk.Config.outboundHighestPort = Math.max(MsrpSdk.Config.outboundBasePort, MsrpSdk.Config.outboundHighestPort);
+
   MsrpSdk.Logger = logger || {
     debug: () => {},
     info: () => {},
