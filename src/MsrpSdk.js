@@ -14,6 +14,7 @@ module.exports = function (config, logger) {
     heartbeatsTimeout: config.heartbeatsTimeout || 10000,
     host: config.host || '127.0.0.1',
     isProduction: typeof config.isProduction === 'boolean' ? config.isProduction : process.env.NODE_ENV === 'production',
+    manualReports: !!config.manualReports,
     obfuscateBody: !!config.obfuscateBody,
     outboundBasePort: config.outboundBasePort || 49152,
     outboundHighestPort: config.outboundHighestPort || 65535,

@@ -6,7 +6,7 @@ const { StringDecoder } = require('string_decoder');
 module.exports = function (MsrpSdk) {
 
   const CHUNK_SIZE = 2048;
-  const REPORT_TIMEOUT = 30000; // Wait for 30 seconds to receive the Success/Failure report
+  const REPORT_TIMEOUT = 40000; // Wait for 40 seconds to receive the Success/Failure report
 
   /**
    * Manages the sending of a message, dividing it into chunks if required.
@@ -95,9 +95,9 @@ module.exports = function (MsrpSdk) {
       this.nextTid = MsrpSdk.Util.newTID();
 
       chunk.sender = this;
-      chunk.addHeader('Message-ID', this.messageId);
-      chunk.addHeader('Success-Report', 'yes');
-      chunk.addHeader('Failure-Report', 'yes');
+      chunk.setHeader('Message-ID', this.messageId);
+      chunk.setHeader('Success-Report', 'yes');
+      chunk.setHeader('Failure-Report', 'yes');
       if (this.aborted) {
         chunk.continuationFlag = MsrpSdk.Message.Flag.abort;
         return chunk;
@@ -113,9 +113,9 @@ module.exports = function (MsrpSdk) {
       if (this.size > 0) {
         if (this.sentBytes === 0) {
           // Include extra MIME headers on first chunk
-          chunk.addHeader('Content-Disposition', this.disposition || 'inline');
+          chunk.setHeader('Content-Disposition', this.disposition || 'inline');
           if (this.description) {
-            chunk.addHeader('Content-Description', this.description);
+            chunk.setHeader('Content-Description', this.description);
           }
         }
         chunk.contentType = this.contentType;

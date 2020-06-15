@@ -22,7 +22,7 @@ module.exports = function (MsrpSdk) {
       this.continuationFlag = Flag.end;
     }
 
-    addHeader(name, value) {
+    _updateHeader(name, value, replace = false) {
       name = MsrpSdk.Util.normaliseHeader(name);
 
       // Standard headers are stored in their own properties
@@ -40,11 +40,23 @@ module.exports = function (MsrpSdk) {
           break;
       }
 
-      if (this.headers[name]) {
+      if (!replace && this.headers[name]) {
         this.headers[name].push(value);
       } else {
         this.headers[name] = [value];
       }
+    }
+
+    addHeader(name, value) {
+      this._updateHeader(name, value, false);
+    }
+
+    setHeader(name, value) {
+      this._updateHeader(name, value, true);
+    }
+
+    deleteHeader(name) {
+      this.headers[name] = undefined;
     }
 
     getHeader(name) {
@@ -124,7 +136,7 @@ module.exports = function (MsrpSdk) {
 
       if (this.byteRange) {
         const r = this.byteRange;
-        this.addHeader('Byte-Range', `${r.start}-${r.end < 0 ? '*' : r.end}/${r.total < 0 ? '*' : r.total}`);
+        this.setHeader('Byte-Range', `${r.start}-${r.end < 0 ? '*' : r.end}/${r.total < 0 ? '*' : r.total}`);
       }
 
       for (const name in this.headers) {

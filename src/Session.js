@@ -150,6 +150,24 @@ module.exports = function (MsrpSdk) {
     }
 
     /**
+     * Sends the REPORT message for the given messageId.
+     *
+     * @param {string} messageId The messageId.
+     * @param {number} [status] The report status code. Must be a valid MsrpSdk.Status value. Default is MsrpSdk.Status.OK.
+     */
+    sendReport(messageId, status = MsrpSdk.Status.OK) {
+      if (!MsrpSdk.Config.manualReports) {
+        return;
+      }
+
+      if (!MsrpSdk.StatusComment[status]) {
+        throw new Error(`Invalid status code: ${status}`);
+      }
+
+      this.socket.sendReport(messageId, status);
+    }
+
+    /**
      * Function called during the SDP negotiation to create the local SDP.
      * @returns {Promise} Promise with generated session description.
      */
@@ -505,6 +523,7 @@ module.exports = function (MsrpSdk) {
 
   const { outboundBasePort, outboundHighestPort } = MsrpSdk.Config;
   portfinder.basePort = outboundBasePort;
+  // @ts-ignore
   portfinder.highestPort = outboundHighestPort;
 
   // Start at a random port between the range

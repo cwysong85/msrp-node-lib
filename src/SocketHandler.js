@@ -11,6 +11,7 @@ module.exports = function (MsrpSdk) {
   // Private variables
   const chunkReceivers = new Map();
   const chunkSenders = new Map();
+  const pendingReports = new Map();
 
   const activeSenders = [];
   let receiverCheckInterval = null;
@@ -157,6 +158,28 @@ module.exports = function (MsrpSdk) {
       sendRequests();
     };
 
+    /**
+     * Sends the pending REPORT message for the given messageId.
+     *
+     * @param {string} messageId The messageId.
+     * @param {number} [status] The report status code.
+     */
+    socket.sendReport = function (messageId, status) {
+      MsrpSdk.Logger.info(`[SocketHandler]: Send REPORT for message ${messageId} with status ${status}`);
+
+      const pendingData = pendingReports.get(messageId);
+      if (!pendingData) {
+        MsrpSdk.Logger.warn(`[SocketHandler]: There is no pending REPORT for message ${messageId}`);
+        return;
+      }
+      if (pendingData.socket !== socket) {
+        MsrpSdk.Logger.warn('[SocketHandler]: Pending REPORT is for a different socket');
+        // Go ahead and send report anyway
+      }
+
+      sendPendingReport(messageId, status);
+    };
+
     return socket;
   };
 
@@ -278,6 +301,9 @@ module.exports = function (MsrpSdk) {
 
     // Non-chunked messages
     if (request.isComplete()) {
+      // Return successful response: 200 OK
+      sendResponse(request, socket, toUri.uri, MsrpSdk.Status.OK);
+
       // Emit 'message' event. Do not emit it for heartbeat messages or bodiless messages.
       const isHeartbeatMessage = request.contentType === 'text/x-msrp-heartbeat';
       const isBodilessMessage = !request.body && !request.contentType;
@@ -288,8 +314,6 @@ module.exports = function (MsrpSdk) {
           MsrpSdk.Logger.error('[SocketHandler]: Error raising "message" event.', err);
         }
       }
-      // Return successful response: 200 OK
-      sendResponse(request, socket, toUri.uri, MsrpSdk.Status.OK);
       return;
     }
 
@@ -308,7 +332,7 @@ module.exports = function (MsrpSdk) {
       receiver = new MsrpSdk.ChunkReceiver(messageId);
       chunkReceivers.set(messageId, receiver);
       MsrpSdk.Logger.debug(`[SocketHandler]: Created new receiver for ${messageId}. Num active receivers: ${chunkReceivers.size}`);
-      startChunkReceiverPoll();
+      startCheckInterval();
     }
 
     if (!receiver.processChunk(request)) {
@@ -326,24 +350,34 @@ module.exports = function (MsrpSdk) {
       return;
     }
 
-    // If it is the last chunk, parse the message body and clean up the receiver
-    if (receiver.isComplete()) {
-      chunkReceivers.delete(messageId);
-      MsrpSdk.Logger.debug(`[SocketHandler]: Removed receiver for ${messageId}. Num active receivers: ${chunkReceivers.size}`);
-
-      // Update request as if entire message was received
-      request.body = receiver.buffer.toString('utf-8');
-      request.continuationFlag = MsrpSdk.Message.Flag.end;
-      request.byteRange = {
-        start: 1,
-        end: receiver.size,
-        total: receiver.size
-      };
-      // Emit 'message' event including the complete message
-      session.emit('message', request, session);
+    if (!receiver.isComplete()) {
+      // Return successful response: 200 OK
+      sendResponse(request, socket, toUri.uri, MsrpSdk.Status.OK);
+      return;
     }
+
+    // This is the last chunk. Parse the message body and clean up the receiver.
+    chunkReceivers.delete(messageId);
+    MsrpSdk.Logger.debug(`[SocketHandler]: Removed receiver for ${messageId}. Num active receivers: ${chunkReceivers.size}`);
+
+    // Update request as if entire message was received
+    request.body = receiver.buffer.toString('utf-8');
+    request.continuationFlag = MsrpSdk.Message.Flag.end;
+    request.byteRange = {
+      start: 1,
+      end: receiver.size,
+      total: receiver.size
+    };
+
     // Return successful response: 200 OK
     sendResponse(request, socket, toUri.uri, MsrpSdk.Status.OK);
+
+    // Emit 'message' event including the complete message
+    try {
+      session.emit('message', request, session);
+    } catch (err) {
+      MsrpSdk.Logger.error('[SocketHandler]: Error raising "message" event.', err);
+    }
   }
 
   /**
@@ -376,8 +410,8 @@ module.exports = function (MsrpSdk) {
 
       const statusHeader = `000 ${status} ${MsrpSdk.StatusComment[status]}`;
       const report = new MsrpSdk.Message.OutgoingRequest(routePaths, 'REPORT');
-      report.addHeader('Message-ID', req.messageId);
-      report.addHeader('Status', statusHeader);
+      report.setHeader('Message-ID', req.messageId);
+      report.setHeader('Status', statusHeader);
       if (req.byteRange) {
         if (isSuccess) {
           report.byteRange = req.byteRange;
@@ -396,14 +430,68 @@ module.exports = function (MsrpSdk) {
         }
       }
 
-      const encodeMsg = report.encode();
-      socket.write(encodeMsg);
-      if (MsrpSdk.Config.traceMsrp) {
-        MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+      if (isSuccess && MsrpSdk.Config.manualReports) {
+        // Save the REPORT message to be sent when requested by the application
+        pendingReports.set(req.messageId, {
+          report,
+          socket,
+          timestamp: Date.now()
+        });
+        startCheckInterval();
+      } else {
+        // Send the REPORT message
+        const encodeMsg = report.encode();
+        socket.write(encodeMsg, () => {
+          if (MsrpSdk.Config.traceMsrp) {
+            MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+          }
+        });
       }
     } catch (err) {
       MsrpSdk.Logger.error('[SocketHandler]: Error sending report.', err);
     }
+  }
+
+  /**
+   * Sends the pending REPORT message for the given messageId.
+   *
+   * @param {string} messageId The messageId.
+   * @param {number} [status] The report status code.
+   */
+  function sendPendingReport(messageId, status = MsrpSdk.Status.OK) {
+    const pendingData = pendingReports.get(messageId);
+    if (!pendingData) {
+      return;
+    }
+    // First remove the entry from the pending array
+    pendingReports.delete(messageId);
+
+    const { socket, report } = pendingData;
+
+    // Check socket availability
+    if (socket.destroyed) {
+      MsrpSdk.Logger.warn('[SocketHandler]: Unable to send report. Socket is destroyed.');
+      return;
+    }
+
+    if (!socket.writable) {
+      MsrpSdk.Logger.warn('[SocketHandler]: Unable to send report. Socket is not writable.');
+      return;
+    }
+
+    if (status !== MsrpSdk.Status.OK) {
+      // Update Status header before sending the message
+      const statusHeader = `000 ${status} ${MsrpSdk.StatusComment[status]}`;
+      report.setHeader('Status', statusHeader);
+    }
+
+    // Send the REPORT message
+    const encodeMsg = report.encode();
+    socket.write(encodeMsg, () => {
+      if (MsrpSdk.Config.traceMsrp) {
+        MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+      }
+    });
   }
 
   /**
@@ -427,10 +515,11 @@ module.exports = function (MsrpSdk) {
     // Retrieve and encode next chunk
     const msg = sender.getNextChunk();
     const encodeMsg = msg.encode();
-    socket.write(encodeMsg);
-    if (MsrpSdk.Config.traceMsrp) {
-      MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${MsrpSdk.Util.obfuscateMessage(encodeMsg)}`);
-    }
+    socket.write(encodeMsg, () => {
+      if (MsrpSdk.Config.traceMsrp) {
+        MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${MsrpSdk.Util.obfuscateMessage(encodeMsg)}`);
+      }
+    });
 
     // Check whether this sender has now completed
     if (sender.isSendComplete()) {
@@ -471,12 +560,12 @@ module.exports = function (MsrpSdk) {
   function sendResponse(req, socket, toUri, status, comment) {
     // Check socket availability
     if (socket.destroyed) {
-      MsrpSdk.Logger.error('[SocketHandler]: Unable to send response/report. Socket is destroyed.');
+      MsrpSdk.Logger.warn('[SocketHandler]: Unable to send response. Socket is destroyed.');
       return;
     }
 
     if (!socket.writable) {
-      MsrpSdk.Logger.warn('[SocketHandler]: Unable to send response/report. Socket is not writable.');
+      MsrpSdk.Logger.warn('[SocketHandler]: Unable to send response. Socket is not writable.');
       return;
     }
 
@@ -494,20 +583,19 @@ module.exports = function (MsrpSdk) {
         if (MsrpSdk.Config.traceMsrp) {
           MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
         }
-        // Now that we sent the response, we may need to also send a REPORT.
-        sendReport(socket, routePaths, req, status);
       });
-    } else {
-      // There was no need to send a response, but we may need to send a REPORT.
-      sendReport(socket, routePaths, req, status);
     }
+
+    // We may have to send a REPORT event if we don't send a response
+    sendReport(socket, routePaths, req, status);
   }
 
   /**
-   * Helper function for starting the chunk receiver poll if it's not already running.
-   * This function also takes care of stopping the chunk receiver poll when it is done receiving.
+   * Helper function for starting the receiver check interval if it's not already running.
+   * This function also takes care of stopping the interval when it is done.
+   * The receiver check interval is responsible for checking stale ChunkReceivers and stale pending reports.
    */
-  function startChunkReceiverPoll() {
+  function startCheckInterval() {
     if (receiverCheckInterval) {
       return;
     }
@@ -522,12 +610,21 @@ module.exports = function (MsrpSdk) {
           MsrpSdk.Logger.debug(`[SocketHandler]: Removed receiver for ${messageId}. Num active receivers: ${chunkReceivers.size}`);
         }
       }
-      // Stop the receiver poll when done receiving
-      if (chunkReceivers.size === 0) {
+
+      for (const [messageId, pendingData] of pendingReports) {
+        if (pendingData.timestamp < oldestTimestamp) {
+          MsrpSdk.Logger.warn(`[SocketHandler]: Timed out waiting to send report for ${messageId}`);
+          sendPendingReport(messageId, MsrpSdk.Status.REQUEST_TIMEOUT);
+          MsrpSdk.Logger.debug(`[SocketHandler]: Sent report for ${messageId}. Num pending reports: ${chunkReceivers.size}`);
+        }
+      }
+
+      // Stop the receiver poll when done receiving chunks / sending reports
+      if (chunkReceivers.size === 0 && pendingReports.size === 0) {
         clearInterval(receiverCheckInterval);
         receiverCheckInterval = null;
       }
-    }, RCV_TIMEOUT / 2);
+    }, 5000);
   }
 
   MsrpSdk.SocketHandler = SocketHandler;
