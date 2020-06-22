@@ -219,17 +219,19 @@ module.exports = function (MsrpSdk) {
         const session = this;
         getAssignedPort(msrpMedia.getAttributeValue('setup'))
           .then(assignedPort => {
+            const sdpPort = MsrpSdk.Config.offerInboundPortOnSdp ? MsrpSdk.Config.port : assignedPort;
+
             // Path
-            const path = `msrp://${MsrpSdk.Config.signalingHost}:${assignedPort}/${session.sid};tcp`;
+            const path = `msrp://${MsrpSdk.Config.signalingHost}:${sdpPort}/${session.sid};tcp`;
             msrpMedia.setAttribute('path', path);
             // Port
-            msrpMedia.port = assignedPort;
+            msrpMedia.port = sdpPort;
 
             // Success! Send local SDP
             resolve(localSdp.toString());
 
             // Update session information
-            session.localEndpoint = new MsrpSdk.URI(path);
+            session.localEndpoint = new MsrpSdk.URI(path, assignedPort);
 
             // Start connection if needed
             session.startConnection();
@@ -470,31 +472,32 @@ module.exports = function (MsrpSdk) {
 
       if (msrpMedia.getAttributeValue('setup') === 'active') {
         const remoteEndpointUri = new MsrpSdk.URI(this.remoteEndpoints[0]);
-        const localEndpointUri = this.localEndpoint;
 
         // Do nothing if we are trying to connect to ourselves
-        if (localEndpointUri.address === remoteEndpointUri.address) {
+        if (this.localEndpoint.address === remoteEndpointUri.address) {
           MsrpSdk.Logger.warn(`[Session]: Not creating a new TCP connection for session ${this.sid} because we would be talking to ourself. Returning...`);
           return;
         }
 
         // Create socket and connect
-        MsrpSdk.Logger.info(`[Session]: Creating socket for session ${this.sid}. Local address: ${localEndpointUri.address}, Remote address: ${remoteEndpointUri.address}`);
+        MsrpSdk.Logger.info(`[Session]: Creating socket for session ${this.sid}. \
+Local address: ${MsrpSdk.Config.host}:${this.localEndpoint.assignedPort}, Remote address: ${remoteEndpointUri.address}`);
+
         const socket = MsrpSdk.SocketHandler(new net.Socket());
         socket.connect({
           host: remoteEndpointUri.authority,
           port: remoteEndpointUri.port,
-          localAddress: localEndpointUri.authority,
-          localPort: localEndpointUri.port
+          localAddress: MsrpSdk.Config.host,
+          localPort: this.localEndpoint.assignedPort
         }, () => {
-          // Assign socket to the session
-          this.setSocket(socket);
-          // Send bodiless MSRP message
-          const request = new MsrpSdk.Message.OutgoingRequest({
-            toPath: this.remoteEndpoints,
-            fromPath: [this.localEndpoint.uri]
-          }, 'SEND');
           try {
+            // Assign socket to the session
+            this.setSocket(socket);
+            // Send bodiless MSRP message
+            const request = new MsrpSdk.Message.OutgoingRequest({
+              toPath: this.remoteEndpoints,
+              fromPath: [this.localEndpoint.uri]
+            }, 'SEND');
             const encodeMsg = request.encode();
             socket.write(encodeMsg, () => {
               if (MsrpSdk.Config.traceMsrp) {
@@ -547,6 +550,7 @@ module.exports = function (MsrpSdk) {
         stopPort: outboundHighestPort
       })
         .then(assignedPort => {
+          MsrpSdk.Logger.debug(`Assigned outbound port: ${assignedPort}`);
           nextBasePort = Math.max(assignedPort + 1, nextBasePort);
           return assignedPort;
         })

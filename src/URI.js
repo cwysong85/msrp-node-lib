@@ -2,7 +2,7 @@
 
 module.exports = function (MsrpSdk) {
   class URI {
-    constructor(uri) {
+    constructor(uri, assignedPort = null) {
       this.secure = false;
       this.user = null;
       this.authority = '';
@@ -14,6 +14,9 @@ module.exports = function (MsrpSdk) {
         this.uri = uri;
         this.parse(uri);
       }
+      // The assignedPort may be different then the URI port for outbound scenarios if
+      // MsrpSdk.Config.offerInboundPortOnSdp is true.
+      this.assignedPort = assignedPort || this.port;
     }
 
     parse(uri) {

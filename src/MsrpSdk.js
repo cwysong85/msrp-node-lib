@@ -16,6 +16,7 @@ module.exports = function (config, logger) {
     isProduction: typeof config.isProduction === 'boolean' ? config.isProduction : process.env.NODE_ENV === 'production',
     manualReports: !!config.manualReports,
     obfuscateBody: !!config.obfuscateBody,
+    offerInboundPortOnSdp: !!config.offerInboundPortOnSdp,
     outboundBasePort: config.outboundBasePort || 49152,
     outboundHighestPort: config.outboundHighestPort || 65535,
     port: config.port || 2855,
@@ -25,6 +26,11 @@ module.exports = function (config, logger) {
     socketTimeout: config.socketTimeout || 0,
     traceMsrp: !!config.traceMsrp
   };
+
+  if (MsrpSdk.Config.signalingHost !== MsrpSdk.Config.host) {
+    // If we are using a different signaling address then always use listening port (i.e., inbound port) on SDP.
+    MsrpSdk.Config.offerInboundPortOnSdp = true;
+  }
 
   MsrpSdk.Config.outboundHighestPort = Math.max(MsrpSdk.Config.outboundBasePort, MsrpSdk.Config.outboundHighestPort);
 
