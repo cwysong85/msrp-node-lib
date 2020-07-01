@@ -130,9 +130,9 @@ module.exports = function (MsrpSdk) {
         }
       }
 
-      let msg = `MSRP ${this.tid} ${this.method}\r\n`;
-      msg += `To-Path: ${this.toPath.join(' ')}\r\n`;
-      msg += `From-Path: ${this.fromPath.join(' ')}\r\n`;
+      let msg = `MSRP ${this.tid} ${this.method}\r\n\
+To-Path: ${this.toPath.join(' ')}\r\n\
+From-Path: ${this.fromPath.join(' ')}\r\n`;
 
       if (this.byteRange) {
         const r = this.byteRange;
@@ -234,9 +234,9 @@ module.exports = function (MsrpSdk) {
     }
 
     encode() {
-      let msg = `MSRP ${this.tid} ${this.status}${this.comment ? ` ${this.comment}` : ''}\r\n`;
-      msg += `To-Path: ${this.toPath.join(' ')}\r\n`;
-      msg += `From-Path: ${this.fromPath.join(' ')}\r\n`;
+      let msg = `MSRP ${this.tid} ${this.status}${this.comment ? ` ${this.comment}` : ''}\r\n\
+To-Path: ${this.toPath.join(' ')}\r\n\
+From-Path: ${this.fromPath.join(' ')}\r\n`;
 
       for (const name in this.headers) {
         if (this.headers.hasOwnProperty(name)) {

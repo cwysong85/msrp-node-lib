@@ -37,11 +37,13 @@ module.exports = function (MsrpSdk) {
       this.contentType = contentType || 'text/plain';
       this.disposition = disposition;
       this.description = description;
-
       this.onReportReceived = onReportReceived;
+
+      this.isHeartbeat = contentType === 'text/x-msrp-heartbeat';
 
       this.nextTid = MsrpSdk.Util.newTID();
       this.messageId = MsrpSdk.Util.newMID();
+      this.tidList = [this.nextTid];
 
       this.size = this.blob.length;
 
@@ -74,10 +76,12 @@ module.exports = function (MsrpSdk) {
         this.reportTimer = null;
       }
 
-      if (status === MsrpSdk.Status.OK) {
-        MsrpSdk.Logger.debug(`Received Success Report(s) for messageId ${this.messageId}`);
+      if (status !== MsrpSdk.Status.OK) {
+        MsrpSdk.Logger.warn(`Received failure response/report with status ${status} for messageId ${this.messageId}`);
+      } else if (this.isHeartbeat) {
+        MsrpSdk.Logger.debug('Received success response for heartbeat with message', this.messageId);
       } else {
-        MsrpSdk.Logger.warn(`Receive Failure Report with status ${status} for messageId ${this.messageId}`);
+        MsrpSdk.Logger.debug('Received success report(s) for messageId', this.messageId);
       }
 
       if (typeof this.onReportReceived === 'function') {
@@ -93,11 +97,14 @@ module.exports = function (MsrpSdk) {
     getNextChunk() {
       const chunk = new MsrpSdk.Message.OutgoingRequest(this.routePaths, 'SEND', this.nextTid);
       this.nextTid = MsrpSdk.Util.newTID();
+      this.tidList.push(this.nextTid);
 
       chunk.sender = this;
       chunk.setHeader('Message-ID', this.messageId);
-      chunk.setHeader('Success-Report', 'yes');
-      chunk.setHeader('Failure-Report', 'yes');
+      if (!this.isHeartbeat) {
+        chunk.setHeader('Success-Report', 'yes');
+        chunk.setHeader('Failure-Report', 'yes');
+      }
       if (this.aborted) {
         chunk.continuationFlag = MsrpSdk.Message.Flag.abort;
         return chunk;
@@ -216,6 +223,29 @@ module.exports = function (MsrpSdk) {
       }
 
       if (this.isComplete()) {
+        this._handleFinalReport(MsrpSdk.Status.OK);
+      }
+    }
+
+    /**
+     * Processes a response for one of the sent messages.
+     * @param {object} response The received response.
+     */
+    processResponse(response) {
+      if (this.finished) {
+        return;
+      }
+      if (!this.tidList.includes(response.tid)) {
+        MsrpSdk.Logger.error(`Response has unexpected transaction ID - Response:${response.tid}, Sender:${this.tidList}`);
+        return;
+      }
+
+      if (response.status !== MsrpSdk.Status.OK) {
+        this.aborted = true;
+        this.remoteAbort = true;
+        this._handleFinalReport(response.status);
+      } else if (this.isHeartbeat) {
+        // We don't ask for reports for Heartbeat messages
         this._handleFinalReport(MsrpSdk.Status.OK);
       }
     }

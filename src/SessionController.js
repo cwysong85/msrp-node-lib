@@ -101,12 +101,8 @@ module.exports = function (MsrpSdk) {
     });
 
     // Heartbeats events
-    session.on('heartbeatFailure', () => {
-      sessionController.emit('heartbeatFailure', session);
-    });
-
-    session.on('heartbeatTimeout', () => {
-      sessionController.emit('heartbeatTimeout', session);
+    session.on('heartbeatFailure', statusCode => {
+      sessionController.emit('heartbeatFailure', session, statusCode);
     });
   }
 

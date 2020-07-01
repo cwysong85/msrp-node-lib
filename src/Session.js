@@ -17,9 +17,6 @@ module.exports = function (MsrpSdk) {
    * @property {Object} remoteSdp SDP object contanining the remote SDP
    * @property {Object} socket Session socket
    * @property {Boolean} ended Flag that indicating if Session is ended
-   * @property {Object} heartbeatsTransIds Dictionary of heartbeats transaction IDs
-   * @property {Function} heartbeatPingFunc Ping function for heartbeats
-   * @property {Function} heartbeatTimeoutFunc Timeout function for heartbeats
    * @property {Boolean} setHasNotRan Flag indicating if setDescription has already been called during the SDP negotiation
    * @property {Boolean} getHasNotRan Flag indicating if getDescription has already been called during the SDP negotiation
    */
@@ -35,9 +32,9 @@ module.exports = function (MsrpSdk) {
       this.remoteSdp = null;
       this.socket = null;
       this.ended = false;
-      this.heartbeatsTransIds = {};
-      this.heartbeatPingFunc = null;
-      this.heartbeatTimeoutFunc = null;
+      this.heartbeatsEnabled = false;
+      this.sendHeartbeatTimeout = null;
+      this.heartbeatTimeout = null;
       this.setHasNotRan = true;
       this.getHasNotRan = true;
 
@@ -93,6 +90,26 @@ module.exports = function (MsrpSdk) {
         localMedia.format = remoteMedia.format;
         return localMedia;
       });
+    }
+
+    _clearHeartbeatTimeouts() {
+      if (this.sendHeartbeatTimeout) {
+        clearInterval(this.sendHeartbeatTimeout);
+        this.sendHeartbeatTimeout = null;
+      }
+      if (this.heartbeatTimeout) {
+        clearInterval(this.heartbeatTimeout);
+        this.heartbeatTimeout = null;
+      }
+    }
+
+    _raiseHeartbeatFailure(statusCode) {
+      try {
+        MsrpSdk.Logger.warn(`[Session]: Raise "heartbeatFailure" with status ${statusCode} for session ${this.sid}`);
+        this.emit('heartbeatFailure', statusCode, this);
+      } catch (err) {
+        MsrpSdk.Logger.error('[SocketHandler]: Error raising "heartbeatFailure" event.', err);
+      }
     }
 
     /**
@@ -315,10 +332,8 @@ module.exports = function (MsrpSdk) {
         }
 
         MsrpSdk.Logger.info(`[Session]: Ending MSRP session ${this.sid}...`);
-        // Stop heartbeats if needed
-        if (MsrpSdk.Config.enableHeartbeats !== false) {
-          this.stopHeartbeats();
-        }
+        this.stopHeartbeats();
+
         // Close socket if needed
         if (this.socket) {
           this.closeSocket();
@@ -387,52 +402,94 @@ module.exports = function (MsrpSdk) {
       if (isSocketReused) {
         MsrpSdk.Logger.info(`[Session]: Socket for session ${this.sid} is being reused. Do not close it.`);
       } else {
-        MsrpSdk.Logger.info(`[Session]: Closing socket for session ${this.sid}...`);
+        MsrpSdk.Logger.info('[Session]: Closing socket for session', this.sid);
         this.socket.destroy();
       }
 
       // Clean the session socket attribute
       this.socket = null;
-      MsrpSdk.Logger.debug(`[Session]: Removed socket for session ${this.sid}...`);
+      MsrpSdk.Logger.debug('[Session]: Removed socket for session', this.sid);
+    }
+
+    /**
+     * Send a heartbeat message for this session.
+     */
+    sendHeartbeat() {
+      this._clearHeartbeatTimeouts();
+      if (!this.heartbeatsEnabled) {
+        return;
+      }
+
+      if (this.socket && !this.canSend('text/x-msrp-heartbeat')) {
+        MsrpSdk.Logger.warn(`[Session]: Cannot start heartbeats for session ${this.sid}. Peer does not support 'text/x-msrp-heartbeat' content.`);
+        return;
+      }
+
+      let timedOut = false;
+
+      const msgQueued = this.sendMessage('HEARTBEAT', 'text/x-msrp-heartbeat', null, status => {
+        if (timedOut) {
+          return;
+        }
+        this._clearHeartbeatTimeouts();
+        if (status === MsrpSdk.Status.OK) {
+          MsrpSdk.Logger.debug('Successful heartbeat for session', this.sid);
+        } else {
+          this._raiseHeartbeatFailure(status);
+        }
+        this.resetHeartbeat();
+      });
+
+      if (!msgQueued) {
+        this._raiseHeartbeatFailure(MsrpSdk.Status.INTERNAL_SERVER_ERROR);
+        this.resetHeartbeat();
+        return;
+      }
+
+      this.heartbeatTimeout = setTimeout(() => {
+        timedOut = true;
+        this.heartbeatTimeout = null;
+        this._raiseHeartbeatFailure(MsrpSdk.Status.REQUEST_TIMEOUT);
+        this.resetHeartbeat();
+      }, MsrpSdk.Config.heartbeatTimeout * 1000);
+    }
+
+    /**
+     * Restart the hearbeat interval.
+     */
+    resetHeartbeat() {
+      if (!this.heartbeatsEnabled || this.heartbeatTimeout) {
+        // Either heartbeat is not enabled OR we are waiting for a heartbeat response.
+        return;
+      }
+      this._clearHeartbeatTimeouts();
+      MsrpSdk.Logger.debug('Reset heartbeat timer for session', this.sid);
+      this.sendHeartbeatTimeout = setTimeout(() => {
+        this.sendHeartbeatTimeout = null;
+        this.sendHeartbeat();
+      }, MsrpSdk.Config.heartbeatInterval * 1000);
     }
 
     /**
      * Stops MSRP heartbeats
      */
     stopHeartbeats() {
-      MsrpSdk.Logger.debug(`[Session]: Stopping MSRP heartbeats for session ${this.sid}...`);
-      clearInterval(this.heartbeatPingFunc);
-      clearInterval(this.heartbeatTimeoutFunc);
-      this.heartbeatPingFunc = null;
-      this.heartbeatTimeoutFunc = null;
+      this._clearHeartbeatTimeouts();
+      if (this.heartbeatsEnabled) {
+        MsrpSdk.Logger.debug('[Session]: Stopping MSRP heartbeats for session', this.sid);
+        this.heartbeatsEnabled = false;
+      }
     }
 
     /**
      * Starts MSRP heartbeats
      */
     startHeartbeats() {
-      const { heartbeatsInterval, heartbeatsTimeout } = MsrpSdk.Config;
-
-      MsrpSdk.Logger.debug(`[Session]: Starting MSRP heartbeats for session ${this.sid}...`);
-
-      // Send heartbeats
-      const sendHeartbeat = this.sendMessage.bind(this, 'HEARTBEAT', 'text/x-msrp-heartbeat');
-      this.heartbeatPingFunc = setInterval(sendHeartbeat, heartbeatsInterval);
-
-      // Look for timeouts every second
-      function heartbeatTimeoutMonitor() {
-        for (const key in this.heartbeatsTransIds) { // Loop through all stored heartbeats
-          if (this.heartbeatsTransIds.hasOwnProperty(key)) { // Check if key has a property
-            const diff = Date.now() - this.heartbeatsTransIds[key]; // Get time difference
-            if (diff > heartbeatsTimeout) { // If the difference is greater than heartbeatsTimeout
-              MsrpSdk.Logger.error(`[Session]: MSRP heartbeat timeout for session ${this.sid}`);
-              this.emit('heartbeatTimeout', this);
-              delete this.heartbeatsTransIds[key];
-            }
-          }
-        }
+      if (MsrpSdk.Config.enableHeartbeats) {
+        MsrpSdk.Logger.debug('[Session]: Starting MSRP heartbeats for session', this.sid);
+        this.heartbeatsEnabled = true;
+        this.resetHeartbeat();
       }
-      this.heartbeatTimeoutFunc = setInterval(heartbeatTimeoutMonitor, 1000);
     }
 
     /**
@@ -513,10 +570,7 @@ Local address: ${MsrpSdk.Config.host}:${this.localEndpoint.assignedPort}, Remote
         });
       }
 
-      // Start heartbeats if enabled and not running yet
-      if (MsrpSdk.Config.enableHeartbeats !== false && !this.heartbeatPingFunc && !this.heartbeatTimeoutFunc) {
-        this.startHeartbeats();
-      }
+      this.startHeartbeats();
 
       // Reset SDP negotiation flags
       this.getHasNotRan = true;

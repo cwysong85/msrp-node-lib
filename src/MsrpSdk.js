@@ -6,12 +6,17 @@ const MsrpSdk = {};
 module.exports = function (config, logger) {
   config = config || {};
 
+  const DEFAULT_HEARTBEAT_INTERVAL = 60;
+  const DEFAULT_HEARTBEAT_TIMEOUT = 5;
+  const MIN_HEARTBEAT_INTERVAL = 10;
+  const MIN_HEARTBEAT_TIMEOUT = 1;
+
   MsrpSdk.Config = {
     acceptTypes: config.acceptTypes || 'text/plain',
     enableHeartbeats: !!config.enableHeartbeats,
     forwardSessionEvents: !!config.forwardSessionEvents,
-    heartbeatsInterval: config.heartbeatsInterval || 5000,
-    heartbeatsTimeout: config.heartbeatsTimeout || 10000,
+    heartbeatInterval: Math.max(Math.floor(config.heartbeatInterval) || DEFAULT_HEARTBEAT_INTERVAL, MIN_HEARTBEAT_INTERVAL),
+    heartbeatTimeout: Math.max(Math.floor(config.heartbeatTimeout) || DEFAULT_HEARTBEAT_TIMEOUT, MIN_HEARTBEAT_TIMEOUT),
     host: config.host || '127.0.0.1',
     isProduction: typeof config.isProduction === 'boolean' ? config.isProduction : process.env.NODE_ENV === 'production',
     manualReports: !!config.manualReports,
@@ -34,23 +39,28 @@ module.exports = function (config, logger) {
 
   MsrpSdk.Config.outboundHighestPort = Math.max(MsrpSdk.Config.outboundBasePort, MsrpSdk.Config.outboundHighestPort);
 
-  MsrpSdk.Logger = logger || {
-    debug: () => {},
-    info: () => {},
-    warn: () => {},
-    error: () => {}
-  };
+  if (logger) {
+    const logDebug = logger.debug || logger.log || function () {};
+    const logInfo = logger.info || logDebug;
+    const logWarn = logger.warn || logger.warning || logInfo;
+    const logError = logger.error || logWarn;
 
-  if (!MsrpSdk.Logger.warn) {
-    if (typeof MsrpSdk.Logger.warning === 'function') {
-      MsrpSdk.Logger.warn = MsrpSdk.Logger.warning;
-    } else {
-      MsrpSdk.Logger.warn = console.warn;
-    }
-  }
+    MsrpSdk.Logger = {
+      debug: logDebug.bind(logger),
+      info: logInfo.bind(logger),
+      warn: logWarn.bind(logger),
+      error: logError.bind(logger)
+    };
 
-  if (!MsrpSdk.Logger.info) {
-    MsrpSdk.Logger.info = console.log;
+    MsrpSdk.Logger.info('Start MSRP library with config:', MsrpSdk.Config);
+
+  } else {
+    MsrpSdk.Logger = {
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {}
+    };
   }
 
   // Gather MSRP library elements

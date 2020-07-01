@@ -12,6 +12,7 @@ module.exports = function (MsrpSdk) {
   const chunkReceivers = new Map();
   const chunkSenders = new Map();
   const pendingReports = new Map();
+  const requestsSent = new Map();
 
   const activeSenders = [];
   let receiverCheckInterval = null;
@@ -133,6 +134,7 @@ module.exports = function (MsrpSdk) {
       const sender = new MsrpSdk.ChunkSender(routePaths, message, (status, messageId) => {
         // We are done processing reports for this sender
         chunkSenders.delete(messageId);
+        sender.tidList.forEach(tid => requestsSent.delete(tid));
         MsrpSdk.Logger.debug(`[SocketHandler]: Removed sender for ${messageId}. Num active senders: ${chunkSenders.size}`);
 
         if (typeof onReportReceived === 'function') {
@@ -142,12 +144,6 @@ module.exports = function (MsrpSdk) {
 
       chunkSenders.set(sender.messageId, sender);
       MsrpSdk.Logger.debug(`[SocketHandler]: Created new sender for ${sender.messageId}. Num active senders: ${chunkSenders.size}`);
-
-      // Logic for keeping track of sent heartbeats
-      if (message.contentType === 'text/x-msrp-heartbeat') {
-        session.heartbeatsTransIds[sender.nextTid] = Date.now();
-        MsrpSdk.Logger.debug(`[SocketHandler]: MSRP heartbeat sent to ${session.remoteEndpoints} (tid: ${sender.nextTid})`);
-      }
 
       activeSenders.push({
         sender,
@@ -227,9 +223,13 @@ module.exports = function (MsrpSdk) {
 
     switch (request.method) {
       case 'REPORT':
+        if (request.status === MsrpSdk.Status.OK) {
+          session.resetHeartbeat();
+        }
         incomingReport(request);
         break;
       case 'SEND':
+        session.resetHeartbeat();
         incomingSend(request, socket, session, toUri);
         break;
       default:
@@ -240,35 +240,24 @@ module.exports = function (MsrpSdk) {
   }
 
   /**
-   * Helper function for handling incoming responses
-   * Only responses to heartbeats are being handled. The rest responses are ignored.
-   * @param {object} response Response
+   * Helper function for handling incoming responses.
+   *
+   * @param {object} response - The response object.
    */
   function handleIncomingResponse(response) {
-    // Retrieve Session
-    const toUri = new MsrpSdk.URI(response.toPath[0]);
-    const session = MsrpSdk.SessionController.getSession(toUri.sessionId);
-
-    // Check if it is a heartbeat response and handle it as needed
-    const isHeartbeatResponse = response.tid && session && session.heartbeatsTransIds[response.tid];
-    if (isHeartbeatResponse) {
-      if (response.status === 200) {
-        // If the response is 200OK, clear all the stored heartbeats
-        MsrpSdk.Logger.debug(`[SocketHandler]: MSRP heartbeat response received from ${response.fromPath} (tid: ${response.tid})`);
-        session.heartbeatsTransIds = {};
-      } else if (response.status >= 400) {
-        // If not okay, emit 'heartbeatFailure'
-        MsrpSdk.Logger.debug(`[SocketHandler]: MSRP heartbeat error received from ${response.fromPath} (tid: ${response.tid})`);
-        session.emit('heartbeatFailure', session);
-      }
+    const messageId = requestsSent.get(response.tid);
+    if (messageId) {
+      requestsSent.delete(response.tid);
+      MsrpSdk.Logger.info(`[SocketHandler]: Received response for tid:${response.tid} and messageId:${messageId}. Num pending responses: ${requestsSent.size}`);
+      const sender = chunkSenders.get(messageId);
+      sender && sender.processResponse(response);
     }
-
-    // TODO: Handle other incoming responses. Ticket: https://github.com/cwysong85/msrp-node-lib/issues/16
   }
 
   /**
-   * Helper function for handling incoming reports
-   * @param {object} report Report
+   * Helper function for handling incoming reports.
+   *
+   * @param {object} report - The request object.
    */
   function incomingReport(report) {
     // Retrieve message ID
@@ -306,7 +295,7 @@ module.exports = function (MsrpSdk) {
 
       // Emit 'message' event. Do not emit it for heartbeat messages or bodiless messages.
       const isHeartbeatMessage = request.contentType === 'text/x-msrp-heartbeat';
-      const isBodilessMessage = !request.body && !request.contentType;
+      const isBodilessMessage = !request.body;
       if (!isHeartbeatMessage && !isBodilessMessage) {
         try {
           session.emit('message', request, session);
@@ -516,8 +505,11 @@ module.exports = function (MsrpSdk) {
     const msg = sender.getNextChunk();
     const encodeMsg = msg.encode();
     socket.write(encodeMsg, () => {
+      if (msg.method === 'SEND') {
+        requestsSent.set(msg.tid, sender.messageId);
+      }
       if (MsrpSdk.Config.traceMsrp) {
-        MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${MsrpSdk.Util.obfuscateMessage(encodeMsg)}`);
+        MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${sender.isHeartbeat ? encodeMsg : MsrpSdk.Util.obfuscateMessage(encodeMsg)}`);
       }
     });
 
@@ -586,8 +578,10 @@ module.exports = function (MsrpSdk) {
       });
     }
 
-    // We may have to send a REPORT event if we don't send a response
-    sendReport(socket, routePaths, req, status);
+    if (isSuccess) {
+      // We may have to send a Success Report even if we don't send a response
+      sendReport(socket, routePaths, req, status);
+    }
   }
 
   /**
