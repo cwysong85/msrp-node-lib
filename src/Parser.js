@@ -23,7 +23,7 @@ module.exports = function (MsrpSdk) {
     const firstLine = msg.substring(startIndex, endIndex);
     const tokens = firstLine.split(' ');
     if (tokens.length < 3 || tokens[0] !== 'MSRP' || tokens[1].length === 0 || tokens[2].length === 0) {
-      MsrpSdk.Logger.warn(`Error parsing message. Unexpected first line format: ${firstLine}`);
+      MsrpSdk.Logger.warn(`Error parsing message. Unexpected first line format: "${firstLine}"`);
       return null;
     }
 
@@ -39,7 +39,7 @@ module.exports = function (MsrpSdk) {
     } else if (tokens.length === 3) {
       msgObj = new MsrpSdk.Message.IncomingRequest(tokens[1], tokens[2]);
     } else {
-      MsrpSdk.Logger.warn(`Error parsing message. Unexpected first line format: ${firstLine}`);
+      MsrpSdk.Logger.warn(`Error parsing message. Unexpected first line format: "${firstLine}"`);
       return null;
     }
 
@@ -408,7 +408,7 @@ module.exports = function (MsrpSdk) {
         }
 
         if (!parseFn(msgObj.headers[header], msgObj)) {
-          MsrpSdk.Logger.error(`Parsing failed for header ${header}`);
+          MsrpSdk.Logger.error(`Parsing failed for header "${header}"`);
           return false;
         }
       }
