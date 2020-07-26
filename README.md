@@ -1,9 +1,10 @@
 # A MSRP library for NodeJS applications
 
-### Initialization
+## Initialization
 
 Create the MSRP library with minimal settings:
-```
+
+```javascript
 const msrp = require('msrp-node-lib')({
     host: '127.0.0.1',
     port: 2855,
@@ -15,7 +16,8 @@ const msrp = require('msrp-node-lib')({
 ```
 
 You can also pass a custom `logger` to the MSRP library, otherwise the `console` logging methods are used. Here is an example of passing the custom logger to the MSRP library:
-```
+
+```javascript
 const winston = require('winston');
 
 const msrp = require('msrp-node-lib')(
@@ -36,9 +38,9 @@ const msrp = require('msrp-node-lib')(
 }));
 ```
 
-
 Start MSRP server:
-```
+
+```javascript
 // Create msrp server
 const msrpServer = new msrp.Server();
 
@@ -46,10 +48,11 @@ const msrpServer = new msrp.Server();
 msrpServer.start();
 ```
 
-### Sessions
+## Sessions
 
 Create new session:
-```
+
+```javascript
 // Create session
 const session = new msrp.Session();
 
@@ -76,7 +79,8 @@ session.on('end', () => {
 ```
 
 Create SDP Answer from a given SDP Offer:
-```
+
+```javascript
 session.setDescription(sdpOffer)
     .then(() => {
         console.log('Successfully set the remote SDP offer. Now get the SDP answer.');
@@ -92,7 +96,8 @@ session.setDescription(sdpOffer)
 ```
 
 Create SDP Offer:
-```
+
+```javascript
 session.getDescription()
     .then(sdpOffer => {
         console.log(`Created local SDP offer: ${sdpOffer}`);
@@ -104,7 +109,8 @@ session.getDescription()
 ```
 
 Send message:
-```
+
+```javascript
 session.sendMessage('Hello World!', 'text/plain',
     messageId => {
         // onMessageSent callback - This is invoked after all message chunks are sent

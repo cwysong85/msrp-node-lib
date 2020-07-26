@@ -30,13 +30,17 @@ module.exports = function (MsrpSdk) {
       this.acceptTypes = [];
       this.localSdp = null;
       this.remoteSdp = null;
-      this.socket = null;
+      this.socket = null; // The main socket for this session
       this.ended = false;
       this.heartbeatsEnabled = false;
       this.sendHeartbeatTimeout = null;
       this.heartbeatTimeout = null;
       this.setHasNotRan = true;
       this.getHasNotRan = true;
+
+      // If there is a socket in use, but a new socket is connected/used for this session, it is added to the following array
+      // so it can be used as soon as the current socket is closed.
+      this.pendingSockets = [];
 
       MsrpSdk.SessionController.addSession(this);
     }
@@ -108,7 +112,7 @@ module.exports = function (MsrpSdk) {
         MsrpSdk.Logger.warn(`[Session]: Raise "heartbeatFailure" with status ${statusCode} for session ${this.sid}`);
         this.emit('heartbeatFailure', statusCode, this);
       } catch (err) {
-        MsrpSdk.Logger.error('[SocketHandler]: Error raising "heartbeatFailure" event.', err);
+        MsrpSdk.Logger.error('[Session]: Error raising "heartbeatFailure" event.', err);
       }
     }
 
@@ -122,7 +126,7 @@ module.exports = function (MsrpSdk) {
         logReason && MsrpSdk.Logger.warn('[Session]: Cannot send message because there is no remote SDP');
         return false;
       }
-      if (!this.socket) {
+      if (!this.socket || this.socket.destroyed) {
         logReason && MsrpSdk.Logger.warn('[Session]: Cannot send message because there is no active socket');
         return false;
       }
@@ -179,6 +183,11 @@ module.exports = function (MsrpSdk) {
 
       if (!MsrpSdk.StatusComment[status]) {
         throw new Error(`Invalid status code: ${status}`);
+      }
+
+      if (!this.socket || this.socket.destroyed) {
+        MsrpSdk.Logger.warn('[Session]: Cannot send REPORT because there is no active socket');
+        return;
       }
 
       this.socket.sendReport(messageId, status);
@@ -354,25 +363,44 @@ module.exports = function (MsrpSdk) {
     /**
      * Sets the session's socket and and the needed socket event listeners
      * @param {object} socket Socket
+     * @param {boolean} suppressSocketSet Set to true to suppress emitting the 'socketSet' event.
      */
-    setSocket(socket) {
+    setSocket(socket, suppressSocketSet = false) {
+      if (this.socket) {
+        // This coud be a replacement socket. Add to pending list.
+        MsrpSdk.Logger.info(`[Session]: Add pending socket for session ${this.sid}. ${socket.socketInfo}`);
+        this.pendingSockets.push(socket);
+        if (this.socket.destroyed) {
+          this.closeSocket();
+        }
+        return;
+      }
+
+      MsrpSdk.Logger.info(`[Session]: Set socket for session ${this.sid}. ${socket.socketInfo}`);
+
       this.socket = socket;
+      socket.sessions.add(this.sid);
 
       // TODO: Add origin check. Ticket: https://github.com/cwysong85/msrp-node-lib/issues/20
 
       // Forward socket events
       this._onSocketClose = hadError => {
-        MsrpSdk.Logger.debug(`[Session]: Received socket close event for session ${this.sid}`);
-        this.emit('socketClose', hadError, this);
+        MsrpSdk.Logger.info(`[Session]: Received socket close event for session ${this.sid}`);
+        // Invoke closeSocket to unregister the socket event handlers and to set any pending socket.
+        // If there is no pending socket then this.socket will be set to null.
+        this.closeSocket();
+        if (!this.socket) {
+          this.emit('socketClose', hadError, this);
+        }
       };
 
       this._onSocketError = () => {
-        MsrpSdk.Logger.debug(`[Session]: Received socket error event for session ${this.sid}`);
+        MsrpSdk.Logger.info(`[Session]: Received socket error event for session ${this.sid}`);
         this.emit('socketError', this);
       };
 
       this._onSocketTimeout = () => {
-        MsrpSdk.Logger.debug(`[Session]: Received socket timeout event for session ${this.sid}`);
+        MsrpSdk.Logger.info(`[Session]: Received socket timeout event for session ${this.sid}`);
         this.emit('socketTimeout', this);
       };
 
@@ -380,8 +408,10 @@ module.exports = function (MsrpSdk) {
       socket.on('error', this._onSocketError);
       socket.on('timeout', this._onSocketTimeout);
 
-      // Emit socketSet event
-      this.emit('socketSet', this);
+      if (!suppressSocketSet) {
+        // Emit socketSet event
+        this.emit('socketSet', this);
+      }
     }
 
     /**
@@ -391,24 +421,37 @@ module.exports = function (MsrpSdk) {
       if (!this.socket) {
         return;
       }
+      this.socket.sessions.delete(this.sid);
+
       // Unregister from socket events
       this.socket.removeListener('close', this._onSocketClose);
       this.socket.removeListener('error', this._onSocketError);
       this.socket.removeListener('timeout', this._onSocketTimeout);
 
-      // Check if the session socket is being reused by other session
-      const isSocketReused = MsrpSdk.SessionController.isSocketReused(this);
-      // Close the socket if it is not being reused by other session
-      if (isSocketReused) {
-        MsrpSdk.Logger.info(`[Session]: Socket for session ${this.sid} is being reused. Do not close it.`);
-      } else {
-        MsrpSdk.Logger.info('[Session]: Closing socket for session', this.sid);
-        this.socket.destroy();
+      if (!this.socket.destroyed) {
+        // Check if the session socket is being reused by other session
+        const isSocketReused = this.socket.sessions.size > 0;
+        // Close the socket if it is not being reused by other session
+        if (isSocketReused) {
+          MsrpSdk.Logger.info(`[Session]: Socket for session ${this.sid} is being reused. Do not close it.`);
+        } else {
+          MsrpSdk.Logger.info('[Session]: Closing socket for session', this.sid);
+          this.socket.destroy();
+        }
       }
 
       // Clean the session socket attribute
+      MsrpSdk.Logger.info(`[Session]: Removed socket for session ${this.sid}. ${this.socket.socketInfo}`);
       this.socket = null;
-      MsrpSdk.Logger.debug('[Session]: Removed socket for session', this.sid);
+
+      // Check if there is a pending socket
+      while (this.pendingSockets.length > 0) {
+        const nextSocket = this.pendingSockets.shift();
+        if (!nextSocket.destroyed) {
+          this.setSocket(nextSocket, true);
+          break;
+        }
+      }
     }
 
     /**
@@ -550,6 +593,7 @@ Local address: ${MsrpSdk.Config.host}:${this.localEndpoint.assignedPort}, Remote
           try {
             // Assign socket to the session
             this.setSocket(socket);
+
             // Send bodiless MSRP message
             const request = new MsrpSdk.Message.OutgoingRequest({
               toPath: this.remoteEndpoints,
@@ -558,7 +602,7 @@ Local address: ${MsrpSdk.Config.host}:${this.localEndpoint.assignedPort}, Remote
             const encodeMsg = request.encode();
             socket.write(encodeMsg, () => {
               if (MsrpSdk.Config.traceMsrp) {
-                MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+                MsrpSdk.Logger.info(`[Session]: MSRP sent (${socket.socketInfo}) - \r\n${encodeMsg}`);
               }
               if (typeof callback === 'function') {
                 callback();

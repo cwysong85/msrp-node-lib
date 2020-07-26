@@ -11,6 +11,7 @@ module.exports = function (MsrpSdk) {
   class SessionController extends EventEmitter {
     constructor() {
       super();
+
       this.sessionsMap = new Map();
     }
 
@@ -56,20 +57,6 @@ module.exports = function (MsrpSdk) {
       if (!session.ended) {
         session.end();
       }
-    }
-
-    /**
-     * Checks if the socket for the given session is used by another session.
-     * @param {object} session The Session instance
-     * @returns {boolean} Returns true if socket is reused
-     */
-    isSocketReused(session) {
-      for (const sessionItem of this.sessionsMap.values()) {
-        if (sessionItem !== session && sessionItem.socket === session.socket) {
-          return true;
-        }
-      }
-      return false;
     }
   }
 

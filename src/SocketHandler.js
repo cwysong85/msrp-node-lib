@@ -9,6 +9,7 @@ module.exports = function (MsrpSdk) {
   const MAX_BUFFERED_DATA = 1024 * 1024; // 1 MB
 
   // Private variables
+  const connectedSockets = new Set();
   const chunkReceivers = new Map();
   const chunkSenders = new Map();
   const pendingReports = new Map();
@@ -22,7 +23,7 @@ module.exports = function (MsrpSdk) {
     const socketAddr = socket.address() || {};
     const local = `${socketAddr.address}:${socketAddr.port}`;
     const remote = `${socket.remoteAddress}:${socket.remotePort}`;
-    return `Local address: ${local}, Remote address: ${remote}`;
+    return `Local: ${local}, Remote: ${remote}`;
   }
 
   /**
@@ -33,33 +34,39 @@ module.exports = function (MsrpSdk) {
     let socketInfo = '';
     let bufferedData = '';
 
+    // The sessionId for all MSRP sessions using the socket
+    socket.sessions = new Set();
+
     // Set socket encoding so we get Strings in the 'data' event
     socket.setEncoding('utf8');
 
     // Set socket timeout as needed
     if (MsrpSdk.Config.socketTimeout > 0) {
-      MsrpSdk.Logger.debug(`[SocketHandler]: Setting socket timeout to ${MsrpSdk.Config.socketTimeout}`);
       socket.setTimeout(MsrpSdk.Config.socketTimeout);
     }
 
-    // Socket events:
+    // Register for socket events
+
+    const onSocketConnected = function () {
+      socketInfo = getSocketInfo(socket);
+      socket.socketInfo = socketInfo;
+      connectedSockets.add(socket);
+      MsrpSdk.Logger.info(`[SocketHandler]: Socket connected. ${socketInfo}. Num active sockets: ${connectedSockets.size}`);
+    };
+
     if (socket.writable || socket.readable) {
       // Socket is already connected
-      socketInfo = getSocketInfo(socket);
-      MsrpSdk.Logger.info(`[Server]: Socket connected. ${socketInfo}`);
+      onSocketConnected();
     } else {
-      socket.on('connect', () => {
-        socketInfo = getSocketInfo(socket);
-        MsrpSdk.Logger.info(`[Server]: Socket connected. ${socketInfo}`);
-      });
+      socket.on('connect', onSocketConnected);
     }
 
     socket.on('timeout', () => {
-      MsrpSdk.Logger.warn(`[Server]: Socket timeout. ${socketInfo || getSocketInfo(socket)}`);
+      MsrpSdk.Logger.warn(`[SocketHandler]: Socket timeout. ${socketInfo}`);
     });
 
     socket.on('error', error => {
-      MsrpSdk.Logger.error(`[Server]: Socket error. ${socketInfo || getSocketInfo(socket)}.`, error);
+      MsrpSdk.Logger.error(`[SocketHandler]: Socket error. ${socketInfo || getSocketInfo(socket)}.`, error);
     });
 
     socket.on('data', data => {
@@ -84,7 +91,7 @@ module.exports = function (MsrpSdk) {
 
           const [message] = msgMatch;
           if (MsrpSdk.Config.traceMsrp) {
-            MsrpSdk.Logger.info(`[SocketHandler]: MSRP received:\r\n${MsrpSdk.Util.obfuscateMessage(message)}`);
+            MsrpSdk.Logger.info(`[SocketHandler]: MSRP received (${socketInfo}) - \r\n${MsrpSdk.Util.obfuscateMessage(message)}`);
           }
           const parsedMessage = MsrpSdk.parseMessage(message);
           if (!parsedMessage) {
@@ -111,7 +118,8 @@ module.exports = function (MsrpSdk) {
     });
 
     socket.on('close', () => {
-      MsrpSdk.Logger.info(`[Server]: Socket closed. ${socketInfo}`);
+      connectedSockets.delete(socket);
+      MsrpSdk.Logger.info(`[SocketHandler]: Socket closed. ${socketInfo}. Num active sockets: ${connectedSockets.size}`);
     });
 
     /**
@@ -210,15 +218,8 @@ module.exports = function (MsrpSdk) {
     }
 
     // Set session socket if there is no current socket set
-    if (!session.socket || session.socket.destroyed) {
+    if (socket !== session.socket) {
       session.setSocket(socket);
-    }
-
-    // If there is a socket in use, but a new socket is connected, add a listener so the new socket is used as soon as the current socket is closed
-    if (socket.remoteAddress !== session.socket.remoteAddress || socket.remotePort !== session.socket.remotePort) {
-      session.socket.on('close', () => {
-        session.setSocket(socket);
-      });
     }
 
     switch (request.method) {
@@ -432,7 +433,7 @@ module.exports = function (MsrpSdk) {
         const encodeMsg = report.encode();
         socket.write(encodeMsg, () => {
           if (MsrpSdk.Config.traceMsrp) {
-            MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+            MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent (${socket.socketInfo}) - \r\n${encodeMsg}`);
           }
         });
       }
@@ -478,7 +479,7 @@ module.exports = function (MsrpSdk) {
     const encodeMsg = report.encode();
     socket.write(encodeMsg, () => {
       if (MsrpSdk.Config.traceMsrp) {
-        MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+        MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent (${socket.socketInfo}) - \r\n${encodeMsg}`);
       }
     });
   }
@@ -509,7 +510,7 @@ module.exports = function (MsrpSdk) {
         requestsSent.set(msg.tid, sender.messageId);
       }
       if (MsrpSdk.Config.traceMsrp) {
-        MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${sender.isHeartbeat ? encodeMsg : MsrpSdk.Util.obfuscateMessage(encodeMsg)}`);
+        MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent (${socket.socketInfo}) - \r\n${sender.isHeartbeat ? encodeMsg : MsrpSdk.Util.obfuscateMessage(encodeMsg)}`);
       }
     });
 
@@ -573,7 +574,7 @@ module.exports = function (MsrpSdk) {
       const encodeMsg = msg.encode();
       socket.write(encodeMsg, () => {
         if (MsrpSdk.Config.traceMsrp) {
-          MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent:\r\n${encodeMsg}`);
+          MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent (${socket.socketInfo}) - \r\n${encodeMsg}`);
         }
       });
     }
