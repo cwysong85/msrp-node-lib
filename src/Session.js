@@ -287,7 +287,7 @@ module.exports = function (MsrpSdk) {
         const msrpMedia = remoteSdp.getMsrpMedia();
         if (!msrpMedia) {
           this.setHasNotRan = false;
-          this.closeSocket();
+          this.closeSocket(true);
           MsrpSdk.Logger.warn('[Session]: Remote description does not have MSRP');
           resolve();
           return;
@@ -312,7 +312,7 @@ module.exports = function (MsrpSdk) {
 
         // Check if we need to reconnect the socket
         if (this._needsReconnection(remoteSdp)) {
-          this.closeSocket();
+          this.closeSocket(true);
         }
 
         // Update session information
@@ -343,10 +343,9 @@ module.exports = function (MsrpSdk) {
         MsrpSdk.Logger.info(`[Session]: Ending MSRP session ${this.sid}...`);
         this.stopHeartbeats();
 
-        // Close socket if needed
-        if (this.socket) {
-          this.closeSocket();
-        }
+        // Empty pending sockets and close connected socket (if applicable)
+        this.closeSocket(true);
+
         // Set ended flag to true
         this.ended = true;
 
@@ -371,7 +370,7 @@ module.exports = function (MsrpSdk) {
         MsrpSdk.Logger.info(`[Session]: Add pending socket for session ${this.sid}. ${socket.socketInfo}`);
         this.pendingSockets.push(socket);
         if (this.socket.destroyed) {
-          this.closeSocket();
+          this.closeSocket(false);
         }
         return;
       }
@@ -388,7 +387,7 @@ module.exports = function (MsrpSdk) {
         MsrpSdk.Logger.info(`[Session]: Received socket close event for session ${this.sid}`);
         // Invoke closeSocket to unregister the socket event handlers and to set any pending socket.
         // If there is no pending socket then this.socket will be set to null.
-        this.closeSocket();
+        this.closeSocket(false);
         if (!this.socket) {
           this.emit('socketClose', hadError, this);
         }
@@ -416,8 +415,13 @@ module.exports = function (MsrpSdk) {
 
     /**
      * Closes a session socket
+     *
+     * @param {boolean} clearPending - Also clear any pending sockets.
      */
-    closeSocket() {
+    closeSocket(clearPending) {
+      if (clearPending) {
+        this.pendingSockets.length = 0;
+      }
       if (!this.socket) {
         return;
       }
