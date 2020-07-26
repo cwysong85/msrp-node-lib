@@ -419,8 +419,8 @@ module.exports = function (MsrpSdk) {
      * @param {boolean} clearPending - Also clear any pending sockets.
      */
     closeSocket(clearPending) {
-      if (clearPending) {
-        this.pendingSockets.length = 0;
+      if (clearPending && this.pendingSockets.length > 0) {
+        this.pendingSockets = [];
       }
       if (!this.socket) {
         return;
