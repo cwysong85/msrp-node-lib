@@ -11,7 +11,7 @@ module.exports = function (MsrpSdk) {
    * @returns {object} Message object, or null if there an error parsing the message.
    */
   MsrpSdk.parseMessage = function (msg = '') {
-    let startIndex = 0, endIndex, msgObj, parseResult;
+    let startIndex = 0, hasBody = false, endIndex, msgObj;
 
     // Extract and parse the first line
     endIndex = msg.indexOf(lineEnd);
@@ -43,15 +43,29 @@ module.exports = function (MsrpSdk) {
       return null;
     }
 
+    const endLineNoFlag = msgObj.getEndLineNoFlag();
+    const endLineNoFlagLength = endLineNoFlag.length;
+
     // Iterate through the headers, adding them to the object
-    startIndex = endIndex + lineEnd.length;
+    startIndex = endIndex + 2;
+
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      parseResult = getNextHeader(msg, startIndex, msgObj);
+      // If there is a body, there will be an extra CRLF between the headers and the body.
+      if (msg.substr(startIndex, 2) === lineEnd) {
+        startIndex += 2;
+        hasBody = true;
+        break;
+      }
+
+      // If there is no body, we stop at the end-line.
+      if (msg.substr(startIndex, endLineNoFlagLength) === endLineNoFlag) {
+        break;
+      }
+
+      const parseResult = getNextHeader(msg, startIndex, msgObj);
       if (parseResult > 0) {
         startIndex = parseResult;
-      } else if (parseResult === 0) {
-        break;
       } else {
         return null;
       }
@@ -59,32 +73,27 @@ module.exports = function (MsrpSdk) {
 
     // Perform further processing on selected headers
     if (!parseKnownHeaders(msgObj)) {
-      MsrpSdk.Logger.warn('Error parsing message: parseKnownHeaders failed');
       return null;
     }
 
-    // Extract the message body (if present)
-    const endLineNoFlag = msgObj.getEndLineNoFlag();
-    if (msg.substr(startIndex, lineEnd.length) === lineEnd) {
-      // Empty line after headers indicates presence of a message body
-      startIndex += lineEnd.length;
+    if (hasBody) {
       endIndex = msg.indexOf(lineEnd + endLineNoFlag, startIndex);
       if (endIndex === -1) {
-        MsrpSdk.Logger.warn('Error parsing message: no end line after body');
+        MsrpSdk.Logger.warn('Error parsing message: No end line after body');
         return null;
       }
       msgObj.body = msg.substring(startIndex, endIndex);
-      msgObj.continuationFlag = msg[endIndex + lineEnd.length + endLineNoFlag.length];
-    } else {
-      msgObj.continuationFlag = msg[startIndex + endLineNoFlag.length];
+      startIndex = endIndex + 2;
     }
 
+    msgObj.continuationFlag = msg[startIndex + endLineNoFlagLength];
     return msgObj;
   };
 
   /**
    * Remove double quotes from the start and end of the string, if present.
-   * @param {string} str The string to process.
+   *
+   * @param {string} str - The string to process.
    * @returns {string} The unquoted string.
    */
   function unq(str) {
@@ -94,47 +103,38 @@ module.exports = function (MsrpSdk) {
     return str;
   }
 
-  // Extracts the next header after startIndex, and adds it to the provided message object
-  // Returns: Positive value: the new message position when a header is extracted
-  //          0 if there are no more headers
-  //          -1 if it encounters an error
+  /**
+   * Extracts the next header after startIndex, and adds it to the provided message object.
+   *
+   * @param {string} msg - The message being parsed.
+   * @param {number} startIndex - The starting index for the current header being parsed.
+   * @param {object} msgObj - The Message object being populated.
+   * @returns {number} The start index for the next header or -1 if it encounters an error.
+   */
   function getNextHeader(msg, startIndex, msgObj) {
-    const endLineNoFlag = msgObj.getEndLineNoFlag();
-
-    // If there is a body, there will be an extra CRLF between the headers and
-    // the body. If there is no body, we stop at the end-line.
-    if (msg.substr(startIndex, 2) === lineEnd || msg.substr(startIndex, endLineNoFlag.length) === endLineNoFlag) {
-      return 0;
-    }
-
+    let name, value;
     const endIndex = msg.indexOf(lineEnd, startIndex);
+
     if (endIndex === -1) {
-      // Oops - invalid message
       MsrpSdk.Logger.warn('Error parsing header: no CRLF');
       return -1;
     }
 
-    const colonIndex = msg.indexOf(':', startIndex);
-    if (colonIndex === -1) {
-      // Oops - invalid message
-      MsrpSdk.Logger.warn('Error parsing header: no colon');
+    const header = msg.substring(startIndex, endIndex);
+    const colonIndex = header.indexOf(':');
+    if (colonIndex !== -1) {
+      name = header.substring(0, colonIndex).trim();
+      value = header.substring(colonIndex + 1).trim();
+    }
+
+    if (!name || !value) {
+      MsrpSdk.Logger.warn(`Unexpected header format: "${header}"`);
       return -1;
     }
 
-    const name = msg.substring(startIndex, colonIndex).trim();
-    if (name.length === 0) {
-      MsrpSdk.Logger.warn('Error parsing header: no name');
+    if (!msgObj.addHeader(name, value)) {
       return -1;
     }
-
-    const value = msg.substring(colonIndex + 1, endIndex).trim();
-    if (name.length === 0) {
-      MsrpSdk.Logger.warn('Error parsing header: no value');
-      return -1;
-    }
-
-    msgObj.addHeader(name, value);
-
     return endIndex + 2;
   }
 
@@ -206,37 +206,6 @@ module.exports = function (MsrpSdk) {
         msgObj.authenticate.push(authenticate);
       }
     }
-    return true;
-  }
-
-  function parseByteRange(headerArray, msgObj) {
-    // We only expect one Byte-Range header
-    if (headerArray.length !== 1) {
-      return false;
-    }
-    const [value] = headerArray;
-    const rangeSepIndex = value.indexOf('-');
-    const totalSepIndex = value.indexOf('/', rangeSepIndex);
-
-    if (rangeSepIndex === -1 || totalSepIndex === -1) {
-      MsrpSdk.Logger.warn(`Unexpected Byte-Range format: ${value}`);
-      return false;
-    }
-
-    const range = {
-      start: parseInt(value.substring(0, rangeSepIndex), 10),
-      end: value.substring(rangeSepIndex + 1, totalSepIndex).trim(),
-      total: value.substring(totalSepIndex + 1).trim()
-    };
-    range.end = range.end === '*' ? -1 : parseInt(range.end, 10);
-    range.total = range.total === '*' ? -1 : parseInt(range.total, 10);
-
-    if (isNaN(range.start) || isNaN(range.end) || isNaN(range.total)) {
-      MsrpSdk.Logger.warn(`Unexpected Byte-Range values: ${value}`);
-      return false;
-    }
-
-    msgObj.byteRange = range;
     return true;
   }
 
@@ -387,7 +356,6 @@ module.exports = function (MsrpSdk) {
   const headerParsers = {
     'Message-ID': parseMsgId,
     'Failure-Report': parseFailureReport,
-    'Byte-Range': parseByteRange,
     'Status': parseStatus,
     'Content-Disposition': parseContentDisposition,
     'WWW-Authenticate': parseWwwAuthenticate,
@@ -398,22 +366,13 @@ module.exports = function (MsrpSdk) {
   };
 
   function parseKnownHeaders(msgObj) {
-    let header, parseFn;
-    for (header in msgObj.headers) {
-      if (msgObj.headers.hasOwnProperty(header)) {
-        parseFn = headerParsers[header];
-        if (!parseFn) {
-          // Ignore unknown headers
-          continue;
-        }
-
-        if (!parseFn(msgObj.headers[header], msgObj)) {
-          MsrpSdk.Logger.error(`Parsing failed for header "${header}"`);
-          return false;
-        }
+    for (const [name, values] of msgObj.headers) {
+      const parseFn = headerParsers[name];
+      if (parseFn && !parseFn(values, msgObj)) {
+        MsrpSdk.Logger.error(`Parsing failed for header "${name}"`);
+        return false;
       }
     }
-
     return true;
   }
 };

@@ -18,8 +18,34 @@ module.exports = function (MsrpSdk) {
       this.tid = null;
       this.toPath = [];
       this.fromPath = [];
-      this.headers = {};
+      this.headers = new Map();
       this.continuationFlag = Flag.end;
+    }
+
+    _parseByteRange(value) {
+      const rangeSepIndex = value.indexOf('-');
+      const totalSepIndex = value.indexOf('/', rangeSepIndex);
+
+      if (rangeSepIndex === -1 || totalSepIndex === -1) {
+        MsrpSdk.Logger.warn(`Unexpected Byte-Range format: ${value}`);
+        return false;
+      }
+
+      const range = {
+        start: parseInt(value.substring(0, rangeSepIndex), 10),
+        end: value.substring(rangeSepIndex + 1, totalSepIndex).trim(),
+        total: value.substring(totalSepIndex + 1).trim()
+      };
+      range.end = range.end === '*' ? -1 : parseInt(range.end, 10);
+      range.total = range.total === '*' ? -1 : parseInt(range.total, 10);
+
+      if (isNaN(range.start) || isNaN(range.end) || isNaN(range.total)) {
+        MsrpSdk.Logger.warn(`Unexpected Byte-Range values: ${value}`);
+        return false;
+      }
+
+      this.byteRange = range;
+      return true;
     }
 
     _updateHeader(name, value, replace = false) {
@@ -29,40 +55,43 @@ module.exports = function (MsrpSdk) {
       switch (name) {
         case 'To-Path':
           this.toPath = value.split(' ');
-          return;
+          break;
         case 'From-Path':
           this.fromPath = value.split(' ');
-          return;
+          break;
+        case 'Byte-Range':
+          return this._parseByteRange(value);
         case 'Content-Type':
           this.contentType = value;
-          return;
+          break;
         default:
+          const values = replace ? null : this.headers.get(name);
+          if (values) {
+            values.push(value);
+          } else {
+            this.headers.set(name, [value]);
+          }
           break;
       }
-
-      if (!replace && this.headers[name]) {
-        this.headers[name].push(value);
-      } else {
-        this.headers[name] = [value];
-      }
+      return true;
     }
 
     addHeader(name, value) {
-      this._updateHeader(name, value, false);
+      return this._updateHeader(name, value, false);
     }
 
     setHeader(name, value) {
-      this._updateHeader(name, value, true);
+      return this._updateHeader(name, value, true);
     }
 
     deleteHeader(name) {
-      this.headers[name] = undefined;
+      this.headers.delete(name);
     }
 
     getHeader(name) {
-      const header = this.headers[MsrpSdk.Util.normaliseHeader(name)];
-      if (header) {
-        return header.length > 1 ? header : header[0];
+      const values = this.headers.get(MsrpSdk.Util.normaliseHeader(name));
+      if (values) {
+        return values.length > 1 ? values : values[0];
       }
       return null;
     }
@@ -136,20 +165,20 @@ From-Path: ${this.fromPath.join(' ')}\r\n`;
 
       if (this.byteRange) {
         const r = this.byteRange;
-        this.setHeader('Byte-Range', `${r.start}-${r.end < 0 ? '*' : r.end}/${r.total < 0 ? '*' : r.total}`);
+        msg += `Byte-Range: ${r.start}-${r.end < 0 ? '*' : r.end}/${r.total < 0 ? '*' : r.total}\r\n`;
       }
 
-      for (const name in this.headers) {
-        if (this.headers.hasOwnProperty(name) && !OtherMimeHeaders.includes(name)) {
-          msg += `${name}: ${this.headers[name].join(' ')}\r\n`;
+      for (const [name, values] of this.headers) {
+        if (!OtherMimeHeaders.includes(name)) {
+          msg += `${name}: ${values.join(' ')}\r\n`;
         }
       }
 
       let type = this.contentType;
       if (type && this.body) {
         OtherMimeHeaders.forEach(name => {
-          if (this.headers.hasOwnProperty(name)) {
-            msg += `${name}: ${this.headers[name].join(' ')}\r\n`;
+          if (this.headers.has(name)) {
+            msg += `${name}: ${this.headers.get(name).join(' ')}\r\n`;
           }
         });
 
@@ -238,10 +267,8 @@ From-Path: ${this.fromPath.join(' ')}\r\n`;
 To-Path: ${this.toPath.join(' ')}\r\n\
 From-Path: ${this.fromPath.join(' ')}\r\n`;
 
-      for (const name in this.headers) {
-        if (this.headers.hasOwnProperty(name)) {
-          msg += `${name}: ${this.headers[name].join(' ')}\r\n`;
-        }
+      for (const [name, values] of this.headers) {
+        msg += `${name}: ${values.join(' ')}\r\n`;
       }
 
       return msg + this.getEndLine();
