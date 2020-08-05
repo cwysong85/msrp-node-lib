@@ -11,6 +11,27 @@ module.exports = function (config, logger) {
   const MIN_HEARTBEAT_INTERVAL = 10;
   const MIN_HEARTBEAT_TIMEOUT = 1;
 
+  if (logger) {
+    const logDebug = logger.debug || logger.log || function () {};
+    const logInfo = logger.info || logDebug;
+    const logWarn = logger.warn || logger.warning || logInfo;
+    const logError = logger.error || logWarn;
+
+    MsrpSdk.Logger = {
+      debug: logDebug.bind(logger),
+      info: logInfo.bind(logger),
+      warn: logWarn.bind(logger),
+      error: logError.bind(logger)
+    };
+  } else {
+    MsrpSdk.Logger = {
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {}
+    };
+  }
+
   MsrpSdk.Config = {
     acceptTypes: config.acceptTypes || 'text/plain',
     enableHeartbeats: !!config.enableHeartbeats,
@@ -28,9 +49,13 @@ module.exports = function (config, logger) {
     sessionName: config.sessionName || '-',
     setup: config.setup === 'passive' ? 'passive' : 'active',
     signalingHost: config.signalingHost || config.host || '127.0.0.1',
-    socketTimeout: config.socketTimeout || 0,
+    socketTimeout: Math.floor(config.socketTimeout) || 0,
     traceMsrp: !!config.traceMsrp
   };
+
+  if (MsrpSdk.Config.socketTimeout && MsrpSdk.Config.socketTimeout < MsrpSdk.Config.heartbeatInterval) {
+    MsrpSdk.Config.socketTimeout = MsrpSdk.Config.heartbeatInterval + 1;
+  }
 
   if (MsrpSdk.Config.signalingHost !== MsrpSdk.Config.host) {
     // If we are using a different signaling address then always use listening port (i.e., inbound port) on SDP.
@@ -39,29 +64,7 @@ module.exports = function (config, logger) {
 
   MsrpSdk.Config.outboundHighestPort = Math.max(MsrpSdk.Config.outboundBasePort, MsrpSdk.Config.outboundHighestPort);
 
-  if (logger) {
-    const logDebug = logger.debug || logger.log || function () {};
-    const logInfo = logger.info || logDebug;
-    const logWarn = logger.warn || logger.warning || logInfo;
-    const logError = logger.error || logWarn;
-
-    MsrpSdk.Logger = {
-      debug: logDebug.bind(logger),
-      info: logInfo.bind(logger),
-      warn: logWarn.bind(logger),
-      error: logError.bind(logger)
-    };
-
-    MsrpSdk.Logger.info('Start MSRP library with config:', MsrpSdk.Config);
-
-  } else {
-    MsrpSdk.Logger = {
-      debug: () => {},
-      info: () => {},
-      warn: () => {},
-      error: () => {}
-    };
-  }
+  MsrpSdk.Logger.info('Start MSRP library with config:', MsrpSdk.Config);
 
   // Gather MSRP library elements
   require('./Status.js')(MsrpSdk); // No dependencies

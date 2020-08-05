@@ -597,21 +597,7 @@ Local address: ${MsrpSdk.Config.host}:${this.localEndpoint.assignedPort}, Remote
           try {
             // Assign socket to the session
             this.setSocket(socket);
-
-            // Send bodiless MSRP message
-            const request = new MsrpSdk.Message.OutgoingRequest({
-              toPath: this.remoteEndpoints,
-              fromPath: [this.localEndpoint.uri]
-            }, 'SEND');
-            const encodeMsg = request.encode();
-            socket.write(encodeMsg, () => {
-              if (MsrpSdk.Config.traceMsrp) {
-                MsrpSdk.Logger.info(`[Session]: MSRP sent (${socket.socketInfo}) - \r\n${encodeMsg}`);
-              }
-              if (typeof callback === 'function') {
-                callback();
-              }
-            });
+            socket.startSession(this, callback);
           } catch (error) {
             MsrpSdk.Logger.error(`[Session]: An error ocurred while sending the initial bodiless MSRP message: ${error.toString()}`);
           }

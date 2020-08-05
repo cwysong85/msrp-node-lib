@@ -5,17 +5,23 @@ module.exports = function (MsrpSdk) {
 
   const MSRP_REGEX = /MSRP (\S+) [\s\S]*?\r\n-{7}\1[$#+]\r\n/g;
 
+  const AUDIT_INTERVAL = 5000; // 5 seconds
+  const PENDING_SOCKET_TIMEOUT = 15000; // 15 seconds
   const RCV_TIMEOUT = 30000; // 30 seconds
   const MAX_BUFFERED_DATA = 1024 * 1024; // 1 MB
 
   // Private variables
-  const connectedSockets = new Set();
+  const connectedSockets = new Set(); // Set with all connected sockets
+  const pendingAssociations = new Map();  // Connected sockets which are not yet associated with an MSRP session
+
   const chunkReceivers = new Map();
   const chunkSenders = new Map();
   const pendingReports = new Map();
   const requestsSent = new Map();
 
   const activeSenders = [];
+
+  let socketsAuditInterval = null;
   let receiverCheckInterval = null;
   let senderTimeout = null;
 
@@ -42,7 +48,8 @@ module.exports = function (MsrpSdk) {
 
     // Set socket timeout as needed
     if (MsrpSdk.Config.socketTimeout > 0) {
-      socket.setTimeout(MsrpSdk.Config.socketTimeout);
+      MsrpSdk.Logger.debug(`[SocketHandler]: Set socket timeout to ${MsrpSdk.Config.socketTimeout} seconds`);
+      socket.setTimeout(MsrpSdk.Config.socketTimeout * 1000);
     }
 
     // Register for socket events
@@ -51,6 +58,8 @@ module.exports = function (MsrpSdk) {
       socketInfo = getSocketInfo(socket);
       socket.socketInfo = socketInfo;
       connectedSockets.add(socket);
+      pendingAssociations.set(socket, Date.now());
+      startSocketsAudit();
       MsrpSdk.Logger.info(`[SocketHandler]: Socket connected. ${socketInfo}. Num active sockets: ${connectedSockets.size}`);
     };
 
@@ -63,6 +72,7 @@ module.exports = function (MsrpSdk) {
 
     socket.on('timeout', () => {
       MsrpSdk.Logger.warn(`[SocketHandler]: Socket timeout. ${socketInfo}`);
+      socket.destroy();
     });
 
     socket.on('error', error => {
@@ -119,11 +129,46 @@ module.exports = function (MsrpSdk) {
 
     socket.on('close', () => {
       connectedSockets.delete(socket);
+      pendingAssociations.delete(socket);
       MsrpSdk.Logger.info(`[SocketHandler]: Socket closed. ${socketInfo}. Num active sockets: ${connectedSockets.size}`);
     });
 
+
+    /**
+     * Helper function for sending initial session message via a specific socket.
+     *
+     * @param {object} session Session
+     * @param {Function} [onMessageSent] Callback function invoked when request is sent.
+     */
+    socket.startSession = function (session, onMessageSent) {
+      if (!session) {
+        MsrpSdk.Logger.error('[SocketHandler]: Unable to send bodiless message. Missing session.');
+        return;
+      }
+
+      // Socket is associated with session. Remove from pending list (if applicable).
+      pendingAssociations.delete(socket);
+
+      // Send bodiless MSRP message
+      const request = new MsrpSdk.Message.OutgoingRequest({
+        toPath: session.remoteEndpoints,
+        fromPath: [session.localEndpoint.uri]
+      }, 'SEND');
+      const encodeMsg = request.encode();
+
+      socket.write(encodeMsg, () => {
+        if (MsrpSdk.Config.traceMsrp) {
+          MsrpSdk.Logger.info(`[SocketHandler]: MSRP sent (${socket.socketInfo}) - \r\n${encodeMsg}`);
+        }
+        if (typeof onMessageSent === 'function') {
+          onMessageSent();
+        }
+      });
+    };
+
     /**
      * Helper function for sending messages via a specific socket.
+     *
      * @param {object} session Session
      * @param {object} message Message
      * @param {Function} [onMessageSent] Callback function invoked when request is sent.
@@ -135,6 +180,7 @@ module.exports = function (MsrpSdk) {
         MsrpSdk.Logger.error('[SocketHandler]: Unable to send message. Missing arguments.');
         return;
       }
+
       const routePaths = {
         toPath: session.remoteEndpoints,
         fromPath: [session.localEndpoint.uri]
@@ -211,6 +257,8 @@ module.exports = function (MsrpSdk) {
       sendResponse(request, socket, toUri.uri, MsrpSdk.Status.SESSION_DOES_NOT_EXIST);
       return;
     }
+    // Socket is associated with session. Remove from pending list (if applicable).
+    pendingAssociations.delete(socket);
 
     if (request.fromPath[0] !== session.remoteEndpoints[0]) {
       sendResponse(request, socket, toUri.uri, MsrpSdk.Status.SESSION_DOES_NOT_EXIST, 'Invalid From-Path');
@@ -586,6 +634,31 @@ module.exports = function (MsrpSdk) {
   }
 
   /**
+   * Helper function for starting an interval that checks for opened sockets that haven't
+   * received any messages for a valid MSRP session.
+   */
+  function startSocketsAudit() {
+    if (socketsAuditInterval) {
+      return;
+    }
+    socketsAuditInterval = setInterval(() => {
+      const oldestTimestamp = Date.now() - PENDING_SOCKET_TIMEOUT;
+      for (const [socket, timestamp] of pendingAssociations) {
+        if (timestamp < oldestTimestamp) {
+          MsrpSdk.Logger.warn(`[SocketHandler]: Timed out waiting for socket ${socket.socketInfo} to be associated with MSRP session`);
+          socket.destroy();
+          pendingAssociations.delete(socket);
+        }
+      }
+
+      if (!pendingAssociations.size) {
+        clearInterval(socketsAuditInterval);
+        socketsAuditInterval = null;
+      }
+    }, AUDIT_INTERVAL);
+  }
+
+  /**
    * Helper function for starting the receiver check interval if it's not already running.
    * This function also takes care of stopping the interval when it is done.
    * The receiver check interval is responsible for checking stale ChunkReceivers and stale pending reports.
@@ -595,7 +668,7 @@ module.exports = function (MsrpSdk) {
       return;
     }
     receiverCheckInterval = setInterval(() => {
-      const oldestTimestamp = Date.now() - RCV_TIMEOUT; // 30 seconds ago
+      const oldestTimestamp = Date.now() - RCV_TIMEOUT;
       for (const [messageId, receiver] of chunkReceivers) {
         if (receiver.lastReceive < oldestTimestamp) {
           MsrpSdk.Logger.warn(`[SocketHandler]: Timed out waiting for chunks for ${messageId}`);
@@ -619,7 +692,7 @@ module.exports = function (MsrpSdk) {
         clearInterval(receiverCheckInterval);
         receiverCheckInterval = null;
       }
-    }, 5000);
+    }, AUDIT_INTERVAL);
   }
 
   MsrpSdk.SocketHandler = SocketHandler;
