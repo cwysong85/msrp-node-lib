@@ -15,7 +15,7 @@ const msrp = require('msrp-node-lib')({
 });
 ```
 
-You can also pass a custom `logger` to the MSRP library, otherwise the `console` logging methods are used. Here is an example of passing the custom logger to the MSRP library:
+You can also pass a `logger` to the MSRP library, otherwise no logging is performed. Here is an example of passing the custom logger to the MSRP library:
 
 ```javascript
 const winston = require('winston');
