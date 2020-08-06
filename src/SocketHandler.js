@@ -553,6 +553,8 @@ module.exports = function (MsrpSdk) {
     // Retrieve and encode next chunk
     const msg = sender.getNextChunk();
     const encodeMsg = msg.encode();
+
+
     socket.write(encodeMsg, () => {
       if (msg.method === 'SEND') {
         requestsSent.set(msg.tid, sender.messageId);
@@ -581,10 +583,14 @@ module.exports = function (MsrpSdk) {
     // Send the requests asynchronously
     senderTimeout = setTimeout(() => {
       senderTimeout = null;
-      try {
-        sendNextRequest();
-      } catch (err) {
-        MsrpSdk.Logger.error('[SocketHandler]: Failed to send request.', err);
+      MsrpSdk.Logger.info(`Sending messages - Num pending requests: ${activeSenders.length}`);
+      // Send up to 5 messages at a time
+      for (let count = 0; count < 5 && activeSenders.length; count++) {
+        try {
+          sendNextRequest();
+        } catch (err) {
+          MsrpSdk.Logger.error('[SocketHandler]: Failed to send request.', err);
+        }
       }
       sendRequests();
     }, 0);
