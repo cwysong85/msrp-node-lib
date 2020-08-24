@@ -245,19 +245,17 @@ module.exports = function (MsrpSdk) {
         const session = this;
         getAssignedPort(msrpMedia.getAttributeValue('setup'))
           .then(assignedPort => {
-            const sdpPort = MsrpSdk.Config.offerInboundPortOnSdp ? MsrpSdk.Config.port : assignedPort;
-
             // Path
-            const path = `msrp://${MsrpSdk.Config.signalingHost}:${sdpPort}/${session.sid};tcp`;
+            const path = `msrp://${MsrpSdk.Config.signalingHost}:${assignedPort}/${session.sid};tcp`;
             msrpMedia.setAttribute('path', path);
             // Port
-            msrpMedia.port = sdpPort;
+            msrpMedia.port = assignedPort;
 
             // Success! Send local SDP
             resolve(localSdp.toString());
 
             // Update session information
-            session.localEndpoint = new MsrpSdk.URI(path, assignedPort);
+            session.localEndpoint = new MsrpSdk.URI(path);
 
             // Start connection if needed
             session.startConnection();
@@ -583,25 +581,55 @@ module.exports = function (MsrpSdk) {
           return;
         }
 
-        // Create socket and connect
-        MsrpSdk.Logger.info(`[Session]: Creating socket for session ${this.sid}. \
-Local address: ${MsrpSdk.Config.host}:${this.localEndpoint.assignedPort}, Remote address: ${remoteEndpointUri.address}`);
+        const connect = (localPort, finalAttempt) => {
+          // Create socket and connect
+          const socketInfo = `Local address: ${MsrpSdk.Config.host}:${localPort}, Remote address: ${remoteEndpointUri.address}`;
+          MsrpSdk.Logger.info(`[Session]: Creating socket for session ${this.sid}. ${socketInfo}`);
 
-        const socket = MsrpSdk.SocketHandler(new net.Socket());
-        socket.connect({
-          host: remoteEndpointUri.authority,
-          port: remoteEndpointUri.port,
-          localAddress: MsrpSdk.Config.host,
-          localPort: this.localEndpoint.assignedPort
-        }, () => {
-          try {
-            // Assign socket to the session
-            this.setSocket(socket);
-            socket.startSession(this, callback);
-          } catch (error) {
-            MsrpSdk.Logger.error(`[Session]: An error ocurred while sending the initial bodiless MSRP message: ${error.toString()}`);
-          }
-        });
+          const rawSocket = new net.Socket();
+
+          const onError = error => {
+            MsrpSdk.Logger.error(`[Session]: Error opening socket. ${socketInfo}. ${error}`);
+            if (!finalAttempt) {
+              MsrpSdk.Logger.info('[Session]: Try allocating a different local port');
+              getNextAvailablePort(false)
+                .then(port => connect(port, true))
+                .catch(err => {
+                  MsrpSdk.Logger.error(`[Session]: Failed to get an available port. ${err}`);
+                });
+            }
+          };
+          rawSocket.on('error', onError);
+
+          rawSocket.connect({
+            host: remoteEndpointUri.authority,
+            port: remoteEndpointUri.port,
+            localAddress: MsrpSdk.Config.host,
+            localPort
+          }, () => {
+            try {
+              rawSocket.off('error', onError);
+
+              const socket = MsrpSdk.SocketHandler(rawSocket);
+              // Assign socket to the session
+              this.setSocket(socket);
+              socket.startSession(this, callback);
+            } catch (error) {
+              MsrpSdk.Logger.error(`[Session]: An error ocurred while sending the initial bodiless MSRP message: ${error.toString()}`);
+            }
+          });
+        };
+
+        if (this.localEndpoint.port !== MsrpSdk.Config.port) {
+          // The SDP contained the outbound port. If connections fails then a renegotiation is needed.
+          connect(this.localEndpoint.port, true);
+        } else {
+          getNextAvailablePort(false)
+            .then(port => connect(port, false))
+            .catch(err => {
+              MsrpSdk.Logger.error(`[Session]: Failed to get an available port. ${err}`);
+            });
+        }
       }
 
       this.startHeartbeats();
@@ -621,39 +649,47 @@ Local address: ${MsrpSdk.Config.host}:${this.localEndpoint.assignedPort}, Remote
   let nextBasePort = outboundBasePort + Math.floor(Math.random() * (outboundHighestPort - outboundBasePort));
 
   /**
-   * Helper function for getting the local port to be used in the session.
+   * Helper function for getting the assigned port for the session description.
    *
    * @param {string} setup Local setup line content.
-   * @param {boolean} [finalAttempt=false] Indicates whether this should be the final attempt.
-   * @return {Promise<number>} Local port to be used in the session.
+   * @return {Promise<number>} Local port to be used in the session; or null if config port should be used.
    */
-  function getAssignedPort(setup, finalAttempt = false) {
-    if (setup === 'active') {
-      if (nextBasePort > outboundHighestPort) {
-        nextBasePort = outboundBasePort;
-      }
-      const port = nextBasePort;
-      return portfinder.getPortPromise({
-        port,
-        stopPort: outboundHighestPort
-      })
-        .then(assignedPort => {
-          MsrpSdk.Logger.debug(`Assigned outbound port: ${assignedPort}`);
-          nextBasePort = Math.max(assignedPort + 1, nextBasePort);
-          return assignedPort;
-        })
-        .catch(err => {
-          if (!finalAttempt && port > outboundBasePort) {
-            // Retry again from the beginning
-            nextBasePort = outboundBasePort;
-            return getAssignedPort(setup, true);
-          } else {
-            return Promise.reject(err);
-          }
-        });
-    } else {
+  function getAssignedPort(setup) {
+    if (MsrpSdk.Config.offerInboundPortOnSdp || setup !== 'active') {
       return Promise.resolve(MsrpSdk.Config.port);
     }
+    return getNextAvailablePort(false);
+  }
+
+  /**
+   * Helper function for getting the next available port in the allowed port range.
+   *
+   * @param {boolean} finalAttempt - Indicates whether this should be the final attempt.
+   * @return {Promise<number>} Next available port.
+   */
+  function getNextAvailablePort(finalAttempt = false) {
+    if (nextBasePort > outboundHighestPort) {
+      nextBasePort = outboundBasePort;
+    }
+    const port = nextBasePort;
+    return portfinder.getPortPromise({
+      port,
+      stopPort: outboundHighestPort
+    })
+      .then(assignedPort => {
+        MsrpSdk.Logger.info(`[Session]: Assigned outbound port for MSRP connection: ${assignedPort}`);
+        nextBasePort = Math.max(assignedPort + 1, nextBasePort);
+        return assignedPort;
+      })
+      .catch(err => {
+        if (!finalAttempt && port > outboundBasePort) {
+          // Retry again from the beginning
+          nextBasePort = outboundBasePort;
+          return getNextAvailablePort(true);
+        } else {
+          return Promise.reject(err);
+        }
+      });
   }
 
   MsrpSdk.Session = Session;

@@ -133,7 +133,6 @@ module.exports = function (MsrpSdk) {
       MsrpSdk.Logger.info(`[SocketHandler]: Socket closed. ${socketInfo}. Num active sockets: ${connectedSockets.size}`);
     });
 
-
     /**
      * Helper function for sending initial session message via a specific socket.
      *
