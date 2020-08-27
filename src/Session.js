@@ -611,9 +611,10 @@ module.exports = function (MsrpSdk) {
               rawSocket.off('error', onError);
 
               const socket = MsrpSdk.SocketHandler(rawSocket);
+              socket.startSession(this, callback);
+
               // Assign socket to the session
               this.setSocket(socket);
-              socket.startSession(this, callback);
             } catch (error) {
               MsrpSdk.Logger.error(`[Session]: An error ocurred while sending the initial bodiless MSRP message: ${error.toString()}`);
             }
