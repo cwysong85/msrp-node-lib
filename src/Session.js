@@ -56,9 +56,13 @@ module.exports = function(MsrpSdk) {
     var session = this;
 
     // Check if the remote endpoint will accept the message by checking its SDP
-    contentType = contentType || 'text/plain';
+    var contentValues = contentType.split('/');
     var canSend = session.remoteSdp.attributes['accept-types'].some(function(acceptType) {
-      return (acceptType === contentType || acceptType === '*');
+      if (acceptType === contentType || acceptType === '*') {
+        return true;
+      }
+      var acceptValues = acceptType.split('/');
+      return (acceptValues[0] === contentValues[0] && acceptValues[1] === '*');    
     });
     if (session.remoteSdp.attributes.sendonly || session.remoteSdp.attributes.inactive) {
       canSend = false;
