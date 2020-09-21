@@ -15,10 +15,10 @@
     "node": ">=10.0.0"
   },
   "dependencies": {
-    "portfinder": "^1.0.20"
+    "portfinder": "1.0.28"
   },
   "devDependencies": {
-    "eslint": "7.1.0"
+    "eslint": "7.9.0"
   },
   "license": "MIT",
   "main": "src/MsrpSdk.js",

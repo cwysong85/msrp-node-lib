@@ -152,6 +152,7 @@ module.exports = function (MsrpSdk) {
           localPort
         }, () => {
           try {
+            MsrpSdk.Logger.info(`[Session]: Connected socket for session ${this.sid}. ${socketInfo}`);
             rawSocket.off('error', onError);
 
             const socket = MsrpSdk.SocketHandler(rawSocket);
@@ -169,6 +170,7 @@ module.exports = function (MsrpSdk) {
         // The SDP contained the outbound port. If connections fails then a renegotiation is needed.
         connect(this.localEndpoint.port, true);
       } else {
+        MsrpSdk.Logger.info(`[Session]: Get outbound port for session ${this.sid}`);
         getNextAvailablePort(false)
           .then(port => connect(port, false))
           .catch(err => {
