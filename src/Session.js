@@ -2,7 +2,6 @@
 
 // Dependencies
 const net = require('net');
-const portfinder = require('portfinder');
 const { EventEmitter } = require('events');
 
 // eslint-disable-next-line max-lines-per-function
@@ -136,7 +135,7 @@ module.exports = function (MsrpSdk) {
           MsrpSdk.Logger.error(`[Session]: Error opening socket. ${socketInfo}. ${error}`);
           if (!finalAttempt) {
             MsrpSdk.Logger.info('[Session]: Try allocating a different local port');
-            getNextAvailablePort(false)
+            getNextAvailablePort()
               .then(port => connect(port, true))
               .catch(err => {
                 MsrpSdk.Logger.error(`[Session]: Failed to get an available port. ${err}`);
@@ -171,7 +170,7 @@ module.exports = function (MsrpSdk) {
         connect(this.localEndpoint.port, true);
       } else {
         MsrpSdk.Logger.info(`[Session]: Get outbound port for session ${this.sid}`);
-        getNextAvailablePort(false)
+        getNextAvailablePort()
           .then(port => connect(port, false))
           .catch(err => {
             MsrpSdk.Logger.error(`[Session]: Failed to get an available port. ${err}`);
@@ -669,13 +668,22 @@ module.exports = function (MsrpSdk) {
     }
   }
 
+  /////////////////////////////////////////////////////////////////////////////////////////////////
+  // Port finder helper functions
+  /////////////////////////////////////////////////////////////////////////////////////////////////
+  const portfinder = require('portfinder');
   const { outboundBasePort, outboundHighestPort } = MsrpSdk.Config;
+
   portfinder.basePort = outboundBasePort;
   // @ts-ignore
   portfinder.highestPort = outboundHighestPort;
 
   // Start at a random port between the range
   let nextBasePort = outboundBasePort + Math.floor(Math.random() * (outboundHighestPort - outboundBasePort));
+
+  // Porfinder doesn't behave properly in some operatinhg systems in case it receives requests in parallel.
+  let pendingPortRequest = false;
+  const queuedPortRequests = [];
 
   /**
    * Helper function for getting the assigned port for the session description.
@@ -687,7 +695,40 @@ module.exports = function (MsrpSdk) {
     if (MsrpSdk.Config.offerInboundPortOnSdp || setup !== 'active') {
       return Promise.resolve(MsrpSdk.Config.port);
     }
-    return getNextAvailablePort(false);
+    return getNextAvailablePort();
+  }
+
+  /**
+   * Helper function for getting the next available port in the allowed port range. This function queues the requests to ensure
+   * only one request is processed at a time.
+   *
+   * @return {Promise<number>} Next available port.
+   */
+  function getNextAvailablePort() {
+    return new Promise((resolve, reject) => {
+      queuedPortRequests.push({ resolve, reject });
+      if (!pendingPortRequest) {
+        processNextRequest();
+      }
+    });
+  }
+
+  /**
+   * Processes the next port finder request in the queue.
+   */
+  function processNextRequest() {
+    if (pendingPortRequest || !queuedPortRequests.length) {
+      return;
+    }
+    pendingPortRequest = true;
+    const { resolve, reject } = queuedPortRequests.shift();
+    getPortPromise(false)
+      .then(resolve)
+      .catch(reject)
+      .finally(() => {
+        pendingPortRequest = false;
+        processNextRequest();
+      });
   }
 
   /**
@@ -696,7 +737,7 @@ module.exports = function (MsrpSdk) {
    * @param {boolean} finalAttempt - Indicates whether this should be the final attempt.
    * @return {Promise<number>} Next available port.
    */
-  function getNextAvailablePort(finalAttempt = false) {
+  function getPortPromise(finalAttempt = false) {
     if (nextBasePort > outboundHighestPort) {
       nextBasePort = outboundBasePort;
     }
@@ -714,7 +755,7 @@ module.exports = function (MsrpSdk) {
         if (!finalAttempt && port > outboundBasePort) {
           // Retry again from the beginning
           nextBasePort = outboundBasePort;
-          return getNextAvailablePort(true);
+          return getPortPromise(true);
         } else {
           return Promise.reject(err);
         }
