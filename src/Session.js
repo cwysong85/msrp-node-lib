@@ -10,10 +10,12 @@ module.exports = function (MsrpSdk) {
    * MSRP Session
    * @class
    * @property {String} sid Session ID
-   * @property {Object} localEndpoint URI object describing the local endpoint
-   * @property {Array<String>} remoteEndpoints Array of remote endpoints
    * @property {Object} localSdp SDP object contanining the local SDP
    * @property {Object} remoteSdp SDP object contanining the remote SDP
+   * @property {Object} localEndpoint URI object describing the local endpoint
+   * @property {Array<String>} remoteEndpoints Array of remote endpoints
+   * @property {String} remoteConnectionMode The connection mode for the remote endpoint.
+   * @property {String} connectionSetup The local connection setup.
    * @property {Object} socket Session socket
    * @property {Boolean} ended Flag that indicating if Session is ended
    * @property {Boolean} setHasNotRan Flag indicating if setDescription has already been called during the SDP negotiation
@@ -24,11 +26,13 @@ module.exports = function (MsrpSdk) {
       super();
 
       this.sid = MsrpSdk.Util.newSID();
-      this.localEndpoint = null;
-      this.remoteEndpoints = [];
-      this.acceptTypes = [];
       this.localSdp = null;
       this.remoteSdp = null;
+      this.localEndpoint = null;
+      this.remoteEndpoints = [];
+      this.remoteConnectionMode = 'inactive';
+      this.connectionSetup = null;
+      this.acceptTypes = [];
       this.socket = null; // The main socket for this session
       this.ended = false;
       this.heartbeatsEnabled = false;
@@ -42,35 +46,6 @@ module.exports = function (MsrpSdk) {
       this.pendingSockets = [];
 
       MsrpSdk.SessionController.addSession(this);
-    }
-
-    /**
-     * Checks if we need to reconnect the socket when a new remote description is received.
-     *
-     * @param {object} newRemoteSdp - The new remote session description.
-     * @returns {boolean} Returns true if socket needs to be reconnected.
-     */
-    _needsReconnection(newRemoteSdp) {
-      if (!this.remoteSdp || !this.socket) {
-        return false;
-      }
-      if (newRemoteSdp.getMsrpConnectionMode() === 'inactive') {
-        MsrpSdk.Logger.info('[Session]: Remote party connection mode changed to inactive');
-        return true;
-      }
-
-      const newMedia = newRemoteSdp.getMsrpMedia();
-      const oldMedia = this.remoteSdp.getMsrpMedia();
-
-      const newPath = newMedia.getAttributeValue('path');
-      const oldPath = oldMedia.getAttributeValue('path');
-
-      if (newPath !== oldPath) {
-        MsrpSdk.Logger.info(`[Session]: Remote path updated: ${oldPath} -> ${newPath}`);
-        return true;
-      }
-
-      return false;
     }
 
     _getMediaDescriptions(localMsrpMedia) {
@@ -113,6 +88,11 @@ module.exports = function (MsrpSdk) {
       } catch (err) {
         MsrpSdk.Logger.error('[Session]: Error raising "heartbeatFailure" event.', err);
       }
+    }
+
+    _needsReconnection(endpoints) {
+      return this.remoteEndpoints.length > 0 && (endpoints.length !== this.remoteEndpoints.length ||
+        endpoints.some((ep, idx) => ep !== this.remoteEndpoints[idx]));
     }
 
     _connectSession(callback) {
@@ -179,13 +159,52 @@ module.exports = function (MsrpSdk) {
     }
 
     /**
+     * Helper function for establishing connections when the SDP negotiation has been completed.
+     * @param {Function} [callback] Callback invoked when connection is established.
+     */
+    _startConnection(callback) {
+      // If the SDP negotiation has not been completed, return
+      if (this.getHasNotRan || this.setHasNotRan) {
+        MsrpSdk.Logger.debug('[Session]: Unable to start connection yet. SDP negotiation in progress.');
+        return;
+      }
+
+      // Reset SDP negotiation flags
+      this.getHasNotRan = true;
+      this.setHasNotRan = true;
+
+      // If the session has an active connection, return
+      if (this.socket && !this.socket.destroyed) {
+        MsrpSdk.Logger.debug(`[Session]: _startConnection - Session ${this.sid} already has an active connection.`);
+        return;
+      }
+
+      // If inactive attribute is present, do not connect
+      if (this.remoteConnectionMode === 'inactive') {
+        MsrpSdk.Logger.info('[Session]: Found "a=inactive" in remote endpoint SDP. Connection not needed.');
+        return;
+      }
+
+      if (!this.remoteEndpoints.length || !this.localEndpoint) {
+        MsrpSdk.Logger.info('[Session]: Unable to start connection. Missing remote and/or local enpoint.');
+        return;
+      }
+
+      if (this.connectionSetup === 'active') {
+        this._connectSession(callback);
+      }
+
+      this.startHeartbeats();
+    }
+
+    /**
      * Check if we can send a message with the given content-type.
      * @param {string} [contentType=text/plain] The message content type.
      * @param {boolean} [logReason=false] Log a warning message in case message cannot be sent.
      */
     canSend(contentType = 'text/plain', logReason = false) {
-      if (!this.remoteSdp) {
-        logReason && MsrpSdk.Logger.warn('[Session]: Cannot send message because there is no remote SDP');
+      if (!this.remoteEndpoints.length) {
+        logReason && MsrpSdk.Logger.warn('[Session]: Cannot send message because there is no remote endpoint');
         return false;
       }
       if (!this.socket || this.socket.destroyed) {
@@ -193,9 +212,8 @@ module.exports = function (MsrpSdk) {
         return false;
       }
 
-      const connectionMode = this.remoteSdp.getMsrpConnectionMode();
-      if (connectionMode === 'sendonly' || connectionMode === 'inactive') {
-        logReason && MsrpSdk.Logger.warn(`[Session]: Cannot send message because remote SDP is ${connectionMode}`);
+      if (this.remoteConnectionMode === 'sendonly' || this.remoteConnectionMode === 'inactive') {
+        logReason && MsrpSdk.Logger.warn(`[Session]: Cannot send message because remote SDP is ${this.remoteConnectionMode}`);
         return false;
       }
 
@@ -289,13 +307,25 @@ module.exports = function (MsrpSdk) {
           msrpMedia.connection.address = MsrpSdk.Config.signalingHost;
           // Attributes
           msrpMedia.setAttribute('accept-types', MsrpSdk.Config.acceptTypes);
+          if (this.localEndpoint) {
+            msrpMedia.port = this.localEndpoint.port;
+            msrpMedia.setAttribute('path', this.localEndpoint.toString());
+          }
+          if (this.localSdp === localSdp) {
+            // Add new media description for MSRP at the end
+            msrpMedia.setAttribute('setup', this.connectionSetup);
+            this.localSdp.media.push(msrpMedia);
+          }
         }
 
-        // Set local media descriptions
-        localSdp.media = this._getMediaDescriptions(msrpMedia);
+        // If this is an SDP Answer OR is the first SDP Offer then set the local media descriptions
+        if (!this.setHasNotRan || !localSdp.media.length) {
+          localSdp.media = this._getMediaDescriptions(msrpMedia);
+        }
 
         this.getHasNotRan = false;
         this.localSdp = localSdp;
+        this.connectionSetup = msrpMedia.getAttributeValue('setup');
 
         if (this.socket && !this.socket.destroyed) {
           MsrpSdk.Logger.debug('[Session]: Session already has an active connection. Just resolve new local description.');
@@ -304,11 +334,10 @@ module.exports = function (MsrpSdk) {
         }
 
         // Get the assigned local port for configuring the path and the port
-        const session = this;
-        getAssignedPort(msrpMedia.getAttributeValue('setup'))
+        getAssignedPort(this.connectionSetup)
           .then(assignedPort => {
             // Path
-            const path = `msrp://${MsrpSdk.Config.signalingHost}:${assignedPort}/${session.sid};tcp`;
+            const path = `msrp://${MsrpSdk.Config.signalingHost}:${assignedPort}/${this.sid};tcp`;
             msrpMedia.setAttribute('path', path);
             // Port
             msrpMedia.port = assignedPort;
@@ -317,10 +346,10 @@ module.exports = function (MsrpSdk) {
             resolve(localSdp.toString());
 
             // Update session information
-            session.localEndpoint = new MsrpSdk.URI(path);
+            this.localEndpoint = new MsrpSdk.URI(path);
 
             // Start connection if needed
-            session.startConnection();
+            this._startConnection();
           })
           .catch(error => {
             MsrpSdk.Logger.error(`[Session]: An error ocurred while creating the local SDP. ${error}`);
@@ -337,7 +366,6 @@ module.exports = function (MsrpSdk) {
      */
     setDescription(description) {
       return new Promise((resolve, reject) => {
-
         MsrpSdk.Logger.debug('[Session]: Processing remote SDP...');
 
         // Parse received SDP
@@ -346,9 +374,12 @@ module.exports = function (MsrpSdk) {
         // Retrieve MSRP media attributes
         const msrpMedia = remoteSdp.getMsrpMedia();
         if (!msrpMedia) {
-          this.setHasNotRan = false;
-          this.closeSocket(true);
           MsrpSdk.Logger.warn('[Session]: Remote description does not have MSRP');
+          this.setHasNotRan = false;
+          this.remoteSdp = remoteSdp;
+          this.remoteEndpoints = [];
+          this.remoteConnectionMode = 'inactive';
+          this.closeSocket(true);
           resolve();
           return;
         }
@@ -370,20 +401,26 @@ module.exports = function (MsrpSdk) {
 
         this.setHasNotRan = false;
 
-        // Check if we need to reconnect the socket
-        if (this._needsReconnection(remoteSdp)) {
-          this.closeSocket(true);
-        }
-
         // Update session information
         this.remoteSdp = remoteSdp;
-        this.remoteEndpoints = path.split(/\s+/);
+        this.remoteConnectionMode = this.remoteSdp.getMsrpConnectionMode();
+        if (this.remoteConnectionMode === 'inactive') {
+          MsrpSdk.Logger.info('[Session]: Remote party connection mode is inactive');
+          this.remoteEndpoints = [];
+          this.closeSocket(true);
+        } else {
+          const remoteEndpoints = path.split(/\s+/);
+          if (this._needsReconnection(remoteEndpoints)) {
+            this.closeSocket(true);
+          }
+          this.remoteEndpoints = remoteEndpoints;
 
-        const acceptTypes = msrpMedia.getAttributeValue('accept-types');
-        this.acceptTypes = acceptTypes ? acceptTypes.split(/\s+/) : [];
+          const acceptTypes = msrpMedia.getAttributeValue('accept-types');
+          this.acceptTypes = acceptTypes ? acceptTypes.split(/\s+/) : [];
 
-        // Start connection if needed
-        this.startConnection();
+          // Start connection if needed
+          this._startConnection();
+        }
 
         resolve();
       });
@@ -600,65 +637,19 @@ module.exports = function (MsrpSdk) {
     }
 
     /**
-     * Helper function for establishing connections when the SDP negotiation has been completed.
-     * @param {Function} [callback] Callback invoked when connection is established.
-     */
-    startConnection(callback) {
-      // If the SDP negotiation has not been completed, return
-      if (this.getHasNotRan || this.setHasNotRan || !this.remoteSdp || !this.localSdp) {
-        MsrpSdk.Logger.debug('[Session]: Unable to start connection yet. SDP negotiation in progress.');
-        return;
-      }
-
-      if (!this.remoteSdp.hasMsrp()) {
-        MsrpSdk.Logger.warn('[Session]: Unable to start connection. Remote SDP does not have MSRP.');
-        return;
-      }
-
-      // If the session has an active connection, return
-      if (this.socket && !this.socket.destroyed) {
-        MsrpSdk.Logger.warn('[Session]: Session already has an active connection.');
-        return;
-      }
-
-      // If inactive attribute is present, do not connect
-      if (this.remoteSdp.getMsrpConnectionMode() === 'inactive') {
-        MsrpSdk.Logger.warn('[Session]: Found "a=inactive" in remote endpoint SDP. Connection not needed.');
-        return;
-      }
-
-      // If the local endpoint is active, connect to the remote party
-      const msrpMedia = this.localSdp.getMsrpMedia();
-      if (!msrpMedia) {
-        MsrpSdk.Logger.warn('[Session]: Unable to start connection. Local SDP does not have MSRP.');
-        return;
-      }
-
-      if (msrpMedia.getAttributeValue('setup') === 'active') {
-        this._connectSession(callback);
-      }
-
-      this.startHeartbeats();
-
-      // Reset SDP negotiation flags
-      this.getHasNotRan = true;
-      this.setHasNotRan = true;
-    }
-
-    /**
      * Helper function for re-establishing connection of an active call.
      * @param {Function} [callback] Callback invoked when connection is established.
      */
     startReconnection(callback) {
-      // If the SDP negotiation has not been completed, return
-      if (!this.remoteSdp || !this.localSdp) {
-        MsrpSdk.Logger.debug('[Session]: Unable to start connection. No local/remote SDP.');
+      // If the session has an active connection, return
+      if (this.socket && !this.socket.destroyed) {
+        MsrpSdk.Logger.warn('[Session]: startReconnection - Session already has an active connection.');
         return;
       }
 
-      // If the session has an active connection, return
-      if (this.socket && !this.socket.destroyed) {
-        MsrpSdk.Logger.warn('[Session]: Session already has an active connection.');
+      // If the SDP negotiation has not been completed, return
+      if (!this.remoteEndpoints.length || !this.localEndpoint) {
+        MsrpSdk.Logger.debug('[Session]: Unable to start connection. No local/remote SDP.');
         return;
       }
 
@@ -666,6 +657,26 @@ module.exports = function (MsrpSdk) {
       this._connectSession(callback);
       this.startHeartbeats();
     }
+
+    /**
+     * Exports the MSRP session data which can be used to reconstruct the Session.
+     *
+     * @returns {object} - The MSRP session data if SDP negotiation is complete and endpoints are set. Otherwise null.
+     */
+    exportSessionData() {
+      if (!this.getHasNotRan || !this.setHasNotRan || !this.localEndpoint || !this.remoteEndpoints.length) {
+        return null;
+      }
+      return {
+        connectionSetup: this.connectionSetup,
+        localEndpoint: this.localEndpoint.toString(),
+        localSdp: this.localSdp.toString(),
+        remoteConnectionMode: this.remoteConnectionMode,
+        remoteEndpoints: this.remoteEndpoints,
+        sid: this.sid
+      };
+    }
+
   }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -681,7 +692,7 @@ module.exports = function (MsrpSdk) {
   // Start at a random port between the range
   let nextBasePort = outboundBasePort + Math.floor(Math.random() * (outboundHighestPort - outboundBasePort));
 
-  // Porfinder doesn't behave properly in some operatinhg systems in case it receives requests in parallel.
+  // Porfinder doesn't behave properly in some operating systems in case it receives requests in parallel.
   let pendingPortRequest = false;
   const queuedPortRequests = [];
 
