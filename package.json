@@ -1,7 +1,7 @@
 {
   "name": "msrp-node-lib",
   "title": "msrp-node-lib",
-  "version": "1.0.4-fork",
+  "version": "1.0.5-fork",
   "description": "A simple, intuitive MSRP JavaScript library",
   "author": {
     "email": "cwysong85@gmail.com",

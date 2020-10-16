@@ -141,8 +141,7 @@ module.exports = function (MsrpSdk) {
      */
     socket.startSession = function (session, onMessageSent) {
       if (!session) {
-        MsrpSdk.Logger.error('[SocketHandler]: Unable to send bodiless message. Missing session.');
-        return;
+        throw new Error('Session is mandatory');
       }
 
       // Socket is associated with session. Remove from pending list (if applicable).
@@ -329,7 +328,7 @@ module.exports = function (MsrpSdk) {
 
   function incomingSend(request, socket, session, toUri) {
     // Check if remote endpoint shouldn't be sending messages because of the recvonly attribute
-    const connectionMode = session.remoteSdp.getMsrpConnectionMode();
+    const connectionMode = session.remoteConnectionMode;
     if (connectionMode === 'recvonly' || connectionMode === 'inactive') {
       MsrpSdk.Logger.warn(`[SocketHandler]: MSRP data is not allowed when session requested "a=${connectionMode}" in SDP`);
       sendResponse(request, socket, toUri.uri, MsrpSdk.Status.FORBIDDEN);

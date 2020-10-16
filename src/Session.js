@@ -22,17 +22,35 @@ module.exports = function (MsrpSdk) {
    * @property {Boolean} getHasNotRan Flag indicating if getDescription has already been called during the SDP negotiation
    */
   class Session extends EventEmitter {
-    constructor() {
+    /**
+     * Create a new Session instance.
+     *
+     * @param {object} [sessionData] Previously exported Session data in case the session is being recreated.
+     */
+    constructor(sessionData = null) {
       super();
 
-      this.sid = MsrpSdk.Util.newSID();
-      this.localSdp = null;
+      if (sessionData) {
+        if (MsrpSdk.SessionController.hasSession(sessionData.sid)) {
+          throw new Error(`A session with sid ${sessionData.sid} already exists`);
+        }
+        this.sid = sessionData.sid;
+        this.localSdp = new MsrpSdk.Sdp(sessionData.localSdp);
+        this.localEndpoint = new MsrpSdk.URI(sessionData.localEndpoint);
+        this.remoteEndpoints = sessionData.remoteEndpoints;
+        this.remoteConnectionMode = sessionData.remoteConnectionMode;
+        this.connectionSetup = sessionData.connectionSetup;
+        this.acceptTypes = sessionData.acceptTypes;
+      } else {
+        this.sid = MsrpSdk.Util.newSID();
+        this.localSdp = null;
+        this.localEndpoint = null;
+        this.remoteEndpoints = [];
+        this.remoteConnectionMode = 'inactive';
+        this.connectionSetup = null;
+        this.acceptTypes = [];
+      }
       this.remoteSdp = null;
-      this.localEndpoint = null;
-      this.remoteEndpoints = [];
-      this.remoteConnectionMode = 'inactive';
-      this.connectionSetup = null;
-      this.acceptTypes = [];
       this.socket = null; // The main socket for this session
       this.ended = false;
       this.heartbeatsEnabled = false;
@@ -95,74 +113,81 @@ module.exports = function (MsrpSdk) {
         endpoints.some((ep, idx) => ep !== this.remoteEndpoints[idx]));
     }
 
-    _connectSession(callback) {
-      const remoteEndpointUri = new MsrpSdk.URI(this.remoteEndpoints[0]);
+    _connectSession() {
+      return new Promise((resolve, reject) => {
+        const remoteEndpointUri = new MsrpSdk.URI(this.remoteEndpoints[0]);
 
-      // Do nothing if we are trying to connect to ourselves
-      if (this.localEndpoint.address === remoteEndpointUri.address) {
-        MsrpSdk.Logger.warn(`[Session]: Not creating a new TCP connection for session ${this.sid} because we would be talking to ourself. Returning...`);
-        return;
-      }
+        // Do nothing if we are trying to connect to ourselves
+        if (this.localEndpoint.address === remoteEndpointUri.address) {
+          MsrpSdk.Logger.warn(`[Session]: Not creating a new TCP connection for session ${this.sid} because we would be talking to ourself. Returning...`);
+          reject('Cannot create connection to self');
+          return;
+        }
 
-      const connect = (localPort, finalAttempt) => {
-        // Create socket and connect
-        const socketInfo = `Local address: ${MsrpSdk.Config.host}:${localPort}, Remote address: ${remoteEndpointUri.address}`;
-        MsrpSdk.Logger.info(`[Session]: Creating socket for session ${this.sid}. ${socketInfo}`);
+        const connect = (localPort, finalAttempt) => {
+          // Create socket and connect
+          const socketInfo = `Local address: ${MsrpSdk.Config.host}:${localPort}, Remote address: ${remoteEndpointUri.address}`;
+          MsrpSdk.Logger.info(`[Session]: Creating socket for session ${this.sid}. ${socketInfo}`);
 
-        const rawSocket = new net.Socket();
+          const rawSocket = new net.Socket();
 
-        const onError = error => {
-          MsrpSdk.Logger.error(`[Session]: Error opening socket. ${socketInfo}. ${error}`);
-          if (!finalAttempt) {
-            MsrpSdk.Logger.info('[Session]: Try allocating a different local port');
-            getNextAvailablePort()
-              .then(port => connect(port, true))
-              .catch(err => {
-                MsrpSdk.Logger.error(`[Session]: Failed to get an available port. ${err}`);
-              });
-          }
-        };
-        rawSocket.on('error', onError);
+          const onError = error => {
+            MsrpSdk.Logger.error(`[Session]: Error opening socket. ${socketInfo}. ${error}`);
+            if (finalAttempt) {
+              reject(error);
+            } else {
+              MsrpSdk.Logger.info('[Session]: Try allocating a different local port');
+              getNextAvailablePort()
+                .then(port => connect(port, true))
+                .catch(err => {
+                  MsrpSdk.Logger.error(`[Session]: Failed to get an available port. ${err}`);
+                  reject('Failed to get an available port');
+                });
+            }
+          };
+          rawSocket.on('error', onError);
 
-        rawSocket.connect({
-          host: remoteEndpointUri.authority,
-          port: remoteEndpointUri.port,
-          localAddress: MsrpSdk.Config.host,
-          localPort
-        }, () => {
-          try {
-            MsrpSdk.Logger.info(`[Session]: Connected socket for session ${this.sid}. ${socketInfo}`);
-            rawSocket.off('error', onError);
+          rawSocket.connect({
+            host: remoteEndpointUri.authority,
+            port: remoteEndpointUri.port,
+            localAddress: MsrpSdk.Config.host,
+            localPort
+          }, () => {
+            try {
+              MsrpSdk.Logger.info(`[Session]: Connected socket for session ${this.sid}. ${socketInfo}`);
+              rawSocket.off('error', onError);
 
-            const socket = MsrpSdk.SocketHandler(rawSocket);
-            socket.startSession(this, callback);
+              const socket = MsrpSdk.SocketHandler(rawSocket);
+              socket.startSession(this, resolve);
 
-            // Assign socket to the session
-            this.setSocket(socket);
-          } catch (error) {
-            MsrpSdk.Logger.error(`[Session]: An error ocurred while sending the initial bodiless MSRP message: ${error.toString()}`);
-          }
-        });
-      };
-
-      if (this.localEndpoint.port !== MsrpSdk.Config.port) {
-        // The SDP contained the outbound port. If connections fails then a renegotiation is needed.
-        connect(this.localEndpoint.port, true);
-      } else {
-        MsrpSdk.Logger.info(`[Session]: Get outbound port for session ${this.sid}`);
-        getNextAvailablePort()
-          .then(port => connect(port, false))
-          .catch(err => {
-            MsrpSdk.Logger.error(`[Session]: Failed to get an available port. ${err}`);
+              // Assign socket to the session
+              this.setSocket(socket);
+            } catch (error) {
+              MsrpSdk.Logger.error(`[Session]: An error ocurred while sending the initial bodiless MSRP message: ${error.toString()}`);
+              reject(error);
+            }
           });
-      }
+        };
+
+        if (this.localEndpoint.port !== MsrpSdk.Config.port) {
+          // The SDP contained the outbound port. If connections fails then a renegotiation is needed.
+          connect(this.localEndpoint.port, true);
+        } else {
+          MsrpSdk.Logger.info(`[Session]: Get outbound port for session ${this.sid}`);
+          getNextAvailablePort()
+            .then(port => connect(port, false))
+            .catch(err => {
+              MsrpSdk.Logger.error(`[Session]: Failed to get an available port. ${err}`);
+              reject('Failed to get an available port');
+            });
+        }
+      });
     }
 
     /**
      * Helper function for establishing connections when the SDP negotiation has been completed.
-     * @param {Function} [callback] Callback invoked when connection is established.
      */
-    _startConnection(callback) {
+    _startConnection() {
       // If the SDP negotiation has not been completed, return
       if (this.getHasNotRan || this.setHasNotRan) {
         MsrpSdk.Logger.debug('[Session]: Unable to start connection yet. SDP negotiation in progress.');
@@ -191,7 +216,10 @@ module.exports = function (MsrpSdk) {
       }
 
       if (this.connectionSetup === 'active') {
-        this._connectSession(callback);
+        this._connectSession()
+          .catch(err => {
+            MsrpSdk.Logger.error(`[Session]: Failed to connect session. ${err}`);
+          });
       }
 
       this.startHeartbeats();
@@ -601,7 +629,7 @@ module.exports = function (MsrpSdk) {
     /**
      * Restart the hearbeat interval.
      */
-    resetHeartbeat() {
+    resetHeartbeat(immediate) {
       if (!this.heartbeatsEnabled || this.heartbeatTimeout) {
         // Either heartbeat is not enabled OR we are waiting for a heartbeat response.
         return;
@@ -611,7 +639,7 @@ module.exports = function (MsrpSdk) {
       this.sendHeartbeatTimeout = setTimeout(() => {
         this.sendHeartbeatTimeout = null;
         this.sendHeartbeat();
-      }, MsrpSdk.Config.heartbeatInterval * 1000);
+      }, immediate ? 0 : MsrpSdk.Config.heartbeatInterval * 1000);
     }
 
     /**
@@ -628,34 +656,36 @@ module.exports = function (MsrpSdk) {
     /**
      * Starts MSRP heartbeats
      */
-    startHeartbeats() {
+    startHeartbeats(immediate) {
       if (MsrpSdk.Config.enableHeartbeats) {
         MsrpSdk.Logger.debug('[Session]: Starting MSRP heartbeats for session', this.sid);
         this.heartbeatsEnabled = true;
-        this.resetHeartbeat();
+        this.resetHeartbeat(immediate);
       }
     }
 
     /**
      * Helper function for re-establishing connection of an active call.
-     * @param {Function} [callback] Callback invoked when connection is established.
+     * @returns {Promise} Promise resolved when connection is succesfull.
      */
-    startReconnection(callback) {
+    startReconnection() {
       // If the session has an active connection, return
       if (this.socket && !this.socket.destroyed) {
-        MsrpSdk.Logger.warn('[Session]: startReconnection - Session already has an active connection.');
-        return;
+        MsrpSdk.Logger.debug('[Session]: startReconnection - Session already has an active connection.');
+        return Promise.resolve();
       }
 
       // If the SDP negotiation has not been completed, return
       if (!this.remoteEndpoints.length || !this.localEndpoint) {
-        MsrpSdk.Logger.debug('[Session]: Unable to start connection. No local/remote SDP.');
-        return;
+        return Promise.reject('Unable to start connection. Missing remote and/or local endpoint');
       }
 
+      MsrpSdk.Logger.info(`[Session]: Start socket reconnection for session ${this.sid}`);
       this.stopHeartbeats();
-      this._connectSession(callback);
-      this.startHeartbeats();
+      return this._connectSession()
+        .then(() => {
+          this.startHeartbeats(true);
+        });
     }
 
     /**
@@ -668,6 +698,7 @@ module.exports = function (MsrpSdk) {
         return null;
       }
       return {
+        acceptTypes: this.acceptTypes,
         connectionSetup: this.connectionSetup,
         localEndpoint: this.localEndpoint.toString(),
         localSdp: this.localSdp.toString(),

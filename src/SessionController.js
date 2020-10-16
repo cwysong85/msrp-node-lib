@@ -37,6 +37,15 @@ module.exports = function (MsrpSdk) {
     }
 
     /**
+     * Checks if a session with the given session ID already exists.
+     * @param {string} sessionId Session ID.
+     * @return {boolean} True if the session exists.
+     */
+    hasSession(sessionId) {
+      return this.sessionsMap.has(sessionId);
+    }
+
+    /**
      * Gets a session by session ID
      * @param {string} sessionId Session ID
      * @return {object} The Session instance.
