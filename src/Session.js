@@ -6,6 +6,16 @@ const { EventEmitter } = require('events');
 
 // eslint-disable-next-line max-lines-per-function
 module.exports = function (MsrpSdk) {
+
+  // The following variables are used to put a remote MSRP server in a blocked list for 1 second,
+  // if there are 10 ECONNREFUSED errors connecting to the server in an interval of 100 ms.
+  const MAX_CONN_REFUSED_PER_INTERVAL = 10;
+  const CONN_REFUSED_INTERVAL = 100;
+  const BLOCKED_DURATION = 1000;
+
+  const connRefusedMap = new Map();
+  const blockedServers = new Map();
+
   /**
    * MSRP Session
    * @class
@@ -113,9 +123,37 @@ module.exports = function (MsrpSdk) {
         endpoints.some((ep, idx) => ep !== this.remoteEndpoints[idx]));
     }
 
+    _handleConnRefusedError(remoteServer) {
+      const now = Date.now();
+      let serverErrors = connRefusedMap.get(remoteServer);
+      if (!serverErrors || serverErrors.endInterval < now) {
+        serverErrors = {
+          count: 1,
+          endInterval: now + CONN_REFUSED_INTERVAL
+        };
+        connRefusedMap.set(remoteServer, serverErrors);
+      } else {
+        serverErrors.count++;
+        if (serverErrors.count > MAX_CONN_REFUSED_PER_INTERVAL) {
+          blockedServers.set(remoteServer, now + BLOCKED_DURATION);
+          MsrpSdk.Logger.error(`[Session]: Exceeded number of allowed ECONNREFUSED errors for ${remoteServer}. Block server for a short interval.`);
+        }
+      }
+    }
+
     _connectSession() {
       return new Promise((resolve, reject) => {
         const remoteEndpointUri = new MsrpSdk.URI(this.remoteEndpoints[0]);
+        const remoteServer = `${remoteEndpointUri.authority}:${remoteEndpointUri.port}`;
+
+        const blockedUntil = blockedServers.get(remoteServer);
+        if (blockedUntil) {
+          if (blockedUntil > Date.now()) {
+            reject(`Server ${remoteServer} is temporarily blocked`);
+            return;
+          }
+          blockedServers.delete(remoteServer);
+        }
 
         // Do nothing if we are trying to connect to ourselves
         if (this.localEndpoint.address === remoteEndpointUri.address) {
@@ -133,9 +171,7 @@ module.exports = function (MsrpSdk) {
 
           const onError = error => {
             MsrpSdk.Logger.error(`[Session]: Error opening socket. ${socketInfo}. ${error}`);
-            if (finalAttempt) {
-              reject(error);
-            } else {
+            if (!finalAttempt && error.code === 'EADDRINUSE') {
               MsrpSdk.Logger.info('[Session]: Try allocating a different local port');
               getNextAvailablePort()
                 .then(port => connect(port, true))
@@ -143,6 +179,11 @@ module.exports = function (MsrpSdk) {
                   MsrpSdk.Logger.error(`[Session]: Failed to get an available port. ${err}`);
                   reject('Failed to get an available port');
                 });
+            } else {
+              if (error.code === 'ECONNREFUSED') {
+                this._handleConnRefusedError(remoteServer);
+              }
+              reject(error);
             }
           };
           rawSocket.on('error', onError);
@@ -156,6 +197,7 @@ module.exports = function (MsrpSdk) {
             try {
               MsrpSdk.Logger.info(`[Session]: Connected socket for session ${this.sid}. ${socketInfo}`);
               rawSocket.off('error', onError);
+              connRefusedMap.delete(remoteServer);
 
               const socket = MsrpSdk.SocketHandler(rawSocket);
               socket.startSession(this, resolve);
