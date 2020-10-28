@@ -4,8 +4,11 @@
 const net = require('net');
 const { EventEmitter } = require('events');
 
+
 // eslint-disable-next-line max-lines-per-function
 module.exports = function (MsrpSdk) {
+
+  const { outboundBasePort, outboundHighestPort, reuseClientSocket } = MsrpSdk.Config;
 
   // The following variables are used to put a remote MSRP server in a blocked list for 1 second,
   // if there are 10 ECONNREFUSED errors connecting to the server in an interval of 100 ms.
@@ -215,13 +218,27 @@ module.exports = function (MsrpSdk) {
           // The SDP contained the outbound port. If connections fails then a renegotiation is needed.
           connect(this.localEndpoint.port, true);
         } else {
-          MsrpSdk.Logger.info(`[Session]: Get outbound port for session ${this.sid}`);
-          getNextAvailablePort()
-            .then(port => connect(port, false))
-            .catch(err => {
-              MsrpSdk.Logger.error(`[Session]: Failed to get an available port. ${err}`);
-              reject('Failed to get an available port');
-            });
+
+          const socket = reuseClientSocket && MsrpSdk.getConnectedSocket(remoteServer);
+          if (socket) {
+            try {
+              MsrpSdk.Logger.info(`[Session]: Reusing client socket for session ${this.sid}`);
+              socket.startSession(this, resolve);
+              this.setSocket(socket);
+            } catch (error) {
+              MsrpSdk.Logger.error(`[Session]: An error ocurred while sending the initial bodiless MSRP message: ${error.toString()}`);
+              reject(error);
+            }
+
+          } else {
+            MsrpSdk.Logger.info(`[Session]: Get outbound port for session ${this.sid}`);
+            getNextAvailablePort()
+              .then(port => connect(port, false))
+              .catch(err => {
+                MsrpSdk.Logger.error(`[Session]: Failed to get an available port. ${err}`);
+                reject('Failed to get an available port');
+              });
+          }
         }
       });
     }
@@ -576,7 +593,9 @@ module.exports = function (MsrpSdk) {
 
       if (!suppressSocketSet) {
         // Emit socketSet event
-        this.emit('socketSet', this);
+        setImmediate(() =>
+          this.emit('socketSet', this)
+        );
       }
     }
 
@@ -756,7 +775,6 @@ module.exports = function (MsrpSdk) {
   // Port finder helper functions
   /////////////////////////////////////////////////////////////////////////////////////////////////
   const portfinder = require('portfinder');
-  const { outboundBasePort, outboundHighestPort } = MsrpSdk.Config;
 
   portfinder.basePort = outboundBasePort;
   // @ts-ignore

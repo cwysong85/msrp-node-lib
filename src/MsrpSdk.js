@@ -45,6 +45,7 @@ module.exports = function (config, logger) {
     offerInboundPortOnSdp: !!config.offerInboundPortOnSdp,
     outboundBasePort: config.outboundBasePort || 49152,
     outboundHighestPort: config.outboundHighestPort || 65535,
+    reuseClientSocket: config.reuseClientSocket || false,
     port: config.port || 2855,
     sessionName: config.sessionName || '-',
     setup: config.setup === 'passive' ? 'passive' : 'active',
