@@ -125,6 +125,14 @@ module.exports = function(MsrpSdk) {
 
     // Set session socket if there is no current socket set
     if (!session.socket || session.socket.destroyed) {
+      // Do not connect socket if it is not coming from the expected address
+      const remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
+      if (socket.remoteAddress !== remoteEndpointUri.authority) {
+        MsrpSdk.Logger.warn('[MSRP SocketHandler] Error while handling incoming request: 400 BAD REQUEST');
+        sendResponse(request, socket, request.toPath[0], MsrpSdk.Status.BAD_REQUEST);
+        return;
+      }
+
       session.setSocket(socket);
     }
 
