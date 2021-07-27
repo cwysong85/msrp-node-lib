@@ -18,39 +18,23 @@ module.exports = function(MsrpSdk) {
     if (!session) {
       throw new TypeError('Missing mandatory parameter');
     }
-    // if (!body) {
-    // 	this.blob = new Blob();
-    // 	this.contentType = null;
-    // 	this.disposition = null;
-    // } else if (body instanceof File) {
-    // 	this.blob = body;
-    // 	this.contentType = contentType || body.type;
-    // 	this.disposition = disposition || 'attachment; filename=' + body.name;
-    // } else if (body instanceof Blob) {
-    // 	this.blob = body;
-    // 	this.contentType = contentType || body.type;
-    // 	this.disposition = disposition;
-    // } else if (body instanceof String || typeof body === 'string') {
-    //this.blob = new Blob([body]);
-    // if(typeof body === 'object') {
-    //     this.blob = JSON.stringify(body);
-    // } else if (body instanceof String || typeof body === 'string') {
-    this.blob = body;
-    // }
-    this.contentType = contentType || 'text/plain';
-    this.disposition = disposition;
-    // } else if (body instanceof ArrayBuffer) {
-    // 	// Stop Chrome complaining about ArrayBuffer in Blob constructor
-    // 	this.blob = new Blob([new Uint8Array(body)]);
-    // 	this.contentType = contentType || 'application/octet-stream';
-    // 	this.disposition = disposition;
-    // } else if (body instanceof ArrayBufferView) {
-    // 	this.blob = new Blob([body]);
-    // 	this.contentType = contentType || 'application/octet-stream';
-    // 	this.disposition = disposition;
-    // } else {
-    // 	throw new TypeError('Body has unexpected type:', body);
-    // }
+    if(!body) {
+      this.bodyBuffer = new Buffer();
+      this.contentType = null;
+      this.disposition = null;
+    } else if(body instanceof String || typeof body === 'string') {
+      this.bodyBuffer = new Buffer(body);
+      this.contentType = contentType || 'text/plain';
+      this.disposition = disposition;
+    } else if(Buffer.isBuffer(body)) {
+      this.bodyBuffer = body;
+      // we are only supporting text/plain in this lib currently
+      this.contentType = contentType || 'text/plain';
+      this.disposition = disposition;
+    } else {
+      throw new TypeError('Body has unexpected type:', body);
+    }
+
     this.session = session;
     this.nextTid = MsrpSdk.Util.newTID();
     this.messageId = MsrpSdk.Util.newMID();
@@ -59,8 +43,9 @@ module.exports = function(MsrpSdk) {
       this.contentType = 'application/octet-stream';
     }
     this.description = description;
-    // this.size = this.blob.length;
-    this.size = MsrpSdk.Util.byteLength(this.blob);
+
+    // Get the size of the buffer
+    this.size = this.bodyBuffer.length;
     // The highest byte index sent so far
     this.sentBytes = 0;
     // The number of contiguous acked bytes
@@ -107,7 +92,8 @@ module.exports = function(MsrpSdk) {
           }
         }
         chunk.contentType = this.contentType;
-        chunk.body = this.blob.slice(this.sentBytes, end);
+        var body = this.bodyBuffer.slice(this.sentBytes, end);
+        chunk.body = body.toString('utf8', 0, body.length);
       }
       if (end < this.size) {
         chunk.continuationFlag = MsrpSdk.Message.Flag.continued;
@@ -222,7 +208,6 @@ module.exports = function(MsrpSdk) {
       }, 0);
     }
   };
-
   function toArrayBuffer(buffer) {
     var ab = new ArrayBuffer(buffer.length);
     var view = new Uint8Array(ab);
