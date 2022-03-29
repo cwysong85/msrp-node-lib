@@ -126,6 +126,7 @@ module.exports = function(MsrpSdk) {
     // Set session socket if there is no current socket set
     if (!session.socket || session.socket.destroyed) {
       // Do not connect socket if it is not coming from the expected address
+      // TODO: (LVM24) Test if this check is breaking conferences in some scenarios
       const remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
       if (socket.remoteAddress !== remoteEndpointUri.authority) {
         MsrpSdk.Logger.warn('[MSRP SocketHandler] Error while handling incoming request: 400 BAD REQUEST');
@@ -247,7 +248,7 @@ module.exports = function(MsrpSdk) {
     const toUri = new MsrpSdk.URI(response.toPath[0]);
     const session = MsrpSdk.SessionController.getSession(toUri.sessionId);
 
-    // Check if it is a heartbeat response and handle it as needed
+    // Check if it is a heartbeat response and handle it as needed and return
     const isHeartbeatResponse = response.tid && session && session.heartbeatsTransIds[response.tid];
     if (isHeartbeatResponse) {
       if (response.status === 200) {
@@ -259,9 +260,11 @@ module.exports = function(MsrpSdk) {
         MsrpSdk.Logger.debug(`[MSRP SocketHandler] MSRP heartbeat error received from ${response.fromPath} (tid: ${response.tid})`);
         session.emit('heartbeatFailure', session);
       }
+      return;
     }
 
-    // TODO: Handle other incoming responses. Ticket: https://github.com/cwysong85/msrp-node-lib/issues/16
+    // Forward the rest of reponses to the application by emitting a generic event including the message tid
+    session.emit(`${response.tid}Response`, response);
   }
 
   /**
@@ -369,15 +372,21 @@ module.exports = function(MsrpSdk) {
         activeSenders.shift();
       }
 
-      // Retrieve and encode next chunk
+      // Retrieve next chunk
       const msg = sender.getNextChunk();
-      const encodeMsg = msg.encode();
+
       // Check socket availability before writing
       if (!socket || socket.destroyed) {
         MsrpSdk.Logger.error('[MSRP SocketHandler] Cannot send message. Socket unavailable.');
+        if (cb) {
+          cb(null, new Error('Socket unavailable'));
+        }
         activeSenders.shift();
         continue;
       }
+
+      // Encode and send message
+      const encodeMsg = msg.encode();
       socket.write(encodeMsg);
       traceMsrp(encodeMsg);
 
@@ -386,7 +395,7 @@ module.exports = function(MsrpSdk) {
         // Remove this sender from the active list
         activeSenders.shift();
         if (cb) {
-          cb();
+          cb(msg);
         }
       } else if (activeSenders.length > 1) {
         // For fairness, move this sender to the end of the queue
