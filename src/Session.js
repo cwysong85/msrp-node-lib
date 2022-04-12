@@ -378,13 +378,6 @@ module.exports = function(MsrpSdk) {
       var remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
       var localEndpointUri = session.localEndpoint;
 
-      // TODO: (LVM24) Test removing same host check
-      // Do nothing if we are trying to connect to ourselves
-      if (localEndpointUri.authority === remoteEndpointUri.authority) {
-        MsrpSdk.Logger.warn(`[MSRP Session] Not creating a new TCP connection for session ${session.sid} because we would be talking to ourself. Returning...`);
-        return;
-      }
-
       // Create socket and connect
       MsrpSdk.Logger.debug(`[MSRP Session] Creating socket for session ${session.sid}...`);
       var socket = new MsrpSdk.SocketHandler(new net.Socket());
