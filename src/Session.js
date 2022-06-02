@@ -52,25 +52,25 @@ module.exports = function(MsrpSdk) {
    * @param  {Function} callback    Callback function
    * @param  {String}   contentType Message Content-Type
    */
-  Session.prototype.sendMessage = function(body, callback, contentType) {
+  Session.prototype.sendMessage = function(body, callback, contentType = 'text/plain') {
     var session = this;
 
     // Check if the remote endpoint will accept the message by checking its SDP
-    contentType = contentType || 'text/plain';
+    // accept-types
     var contentValues = contentType.split('/');
     var canSend = session.remoteSdp.attributes['accept-types'].some(function(acceptType) {
       if (acceptType === contentType || acceptType === '*') {
         return true;
       }
       var acceptValues = acceptType.split('/');
-      return (acceptValues[0] === contentValues[0] && acceptValues[1] === '*');    
+      return (acceptValues[0] === contentValues[0] && acceptValues[1] === '*');
     });
+    // sendonly/inactive 
     if (session.remoteSdp.attributes.sendonly || session.remoteSdp.attributes.inactive) {
       canSend = false;
     }
-
     if (session.remoteSdp.media && session.remoteSdp.media[0] && session.remoteSdp.media[0].attributes) {
-      if (session.remoteSdp.media[0].attributes.sendonly) {
+      if (session.remoteSdp.media[0].attributes.sendonly || session.remoteSdp.media[0].attributes.inactive) {
         canSend = false;
       }
     }
@@ -87,10 +87,16 @@ module.exports = function(MsrpSdk) {
       } else {
         // We don't have a socket. Did the other side send a connection?
         MsrpSdk.Logger.error('[MSRP Session] Cannot send message because there is not an active socket! Did the remote side connect? Check a=setup line in SDP media.');
+        if (callback) {
+          callback(null, new Error('Socket unavailable'));
+        }
         return;
       }
     } else {
       MsrpSdk.Logger.warn('[MSRP Session] Cannot send message due to remote endpoint SDP attributes');
+      if (callback) {
+        callback(null, new Error('Cannot send message due to remote endpoint SDP attributes'));
+      }
       return;
     }
   };
@@ -371,12 +377,6 @@ module.exports = function(MsrpSdk) {
     if (session.localSdp.attributes.setup[0] === 'active') {
       var remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
       var localEndpointUri = session.localEndpoint;
-
-      // Do nothing if we are trying to connect to ourselves
-      if (localEndpointUri.authority === remoteEndpointUri.authority) {
-        MsrpSdk.Logger.warn(`[MSRP Session] Not creating a new TCP connection for session ${session.sid} because we would be talking to ourself. Returning...`);
-        return;
-      }
 
       // Create socket and connect
       MsrpSdk.Logger.debug(`[MSRP Session] Creating socket for session ${session.sid}...`);
