@@ -71,14 +71,14 @@ module.exports = function(MsrpSdk) {
      * @param  {Object}   routePaths Route paths
      * @param  {Function} cb         Callback function
      */
-    socket.sendMessage = function(session, message, routePaths, cb) {
+    socket.sendMessage = function(session, message, routePaths, cb, requestReports) {
       // Sanity checks
       if (!session || !message || !routePaths) {
         MsrpSdk.Logger.error('[MSRP SocketHandler] Unable to send message. Missing arguments.');
         return;
       }
 
-      const sender = new MsrpSdk.ChunkSender(routePaths, message.body, message.contentType);
+      const sender = new MsrpSdk.ChunkSender(routePaths, message.body, message.contentType, null, null, requestReports);
 
       // Logic for keeping track of sent heartbeats
       if (session && message.contentType === 'text/x-msrp-heartbeat') {
