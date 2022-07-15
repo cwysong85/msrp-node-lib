@@ -268,6 +268,14 @@ module.exports = function(MsrpSdk) {
     // Forward socket events
     socket.on('close', function(hadError) {
       session.emit('socketClose', hadError, session);
+      // Socket Reconnect Timeout logic
+      if (!session.ended && MsrpSdk.Config.socketReconnectTimeout > 0) {
+        setTimeout(function() {
+          if(!session.ended && session.socket.destroyed) {
+            session.emit('socketReconnectTimeout', session);
+          }
+        }, MsrpSdk.Config.socketReconnectTimeout);
+      }
     });
     socket.on('error', function() {
       session.emit('socketError', session);
