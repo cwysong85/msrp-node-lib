@@ -14,19 +14,19 @@ module.exports = function(MsrpSdk) {
    * normally only be used when sending a file.
    * @private
    */
-  var ChunkSender = function(session, body, contentType, disposition, description) {
+  var ChunkSender = function(session, body, contentType, disposition, description, requestReports = MsrpSdk.Config.requestReports === false ? false : true) {
     if (!session) {
       throw new TypeError('Missing mandatory parameter');
     }
-    if(!body) {
+    if (!body) {
       this.bodyBuffer = new Buffer();
       this.contentType = null;
       this.disposition = null;
-    } else if(body instanceof String || typeof body === 'string') {
+    } else if (body instanceof String || typeof body === 'string') {
       this.bodyBuffer = new Buffer(body);
       this.contentType = contentType || 'text/plain';
       this.disposition = disposition;
-    } else if(Buffer.isBuffer(body)) {
+    } else if (Buffer.isBuffer(body)) {
       this.bodyBuffer = body;
       // we are only supporting text/plain in this lib currently
       this.contentType = contentType || 'text/plain';
@@ -53,6 +53,8 @@ module.exports = function(MsrpSdk) {
     // Map containing REPORT acks that arrive out-of-order (indexed by range start)
     this.incontiguousReports = {};
     this.incontiguousReportCount = 0;
+    // Request reports for sent MSRP messages
+    this.requestReports = requestReports;
     // Report timer reference
     this.reportTimer = null;
     // Optional report timeout callback
@@ -67,8 +69,8 @@ module.exports = function(MsrpSdk) {
     chunk.tid = this.nextTid;
     this.nextTid = MsrpSdk.Util.newTID();
     chunk.addHeader('message-id', this.messageId);
-    chunk.addHeader('success-report', 'yes');
-    chunk.addHeader('failure-report', 'yes');
+    chunk.addHeader('success-report', this.requestReports ? 'yes' : 'no');
+    chunk.addHeader('failure-report', this.requestReports ? 'yes' : 'no');
     if (this.aborted) {
       chunk.continuationFlag = MsrpSdk.Message.Flag.abort;
     } else {

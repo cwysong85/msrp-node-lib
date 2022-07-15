@@ -52,7 +52,7 @@ module.exports = function(MsrpSdk) {
    * @param  {Function} callback    Callback function
    * @param  {String}   contentType Message Content-Type
    */
-  Session.prototype.sendMessage = function(body, callback, contentType = 'text/plain') {
+  Session.prototype.sendMessage = function(body, callback, contentType = 'text/plain', requestReports) {
     var session = this;
 
     // Check if the remote endpoint will accept the message by checking its SDP
@@ -83,7 +83,7 @@ module.exports = function(MsrpSdk) {
         }, {
           toPath: session.remoteEndpoints,
           localUri: session.localEndpoint.uri
-        }, callback);
+        }, callback, requestReports);
       } else {
         // We don't have a socket. Did the other side send a connection?
         MsrpSdk.Logger.error('[MSRP Session] Cannot send message because there is not an active socket! Did the remote side connect? Check a=setup line in SDP media.');
@@ -268,6 +268,14 @@ module.exports = function(MsrpSdk) {
     // Forward socket events
     socket.on('close', function(hadError) {
       session.emit('socketClose', hadError, session);
+      // Socket Reconnect Timeout logic
+      if (!session.ended && MsrpSdk.Config.socketReconnectTimeout > 0) {
+        setTimeout(function() {
+          if(!session.ended && session.socket.destroyed) {
+            session.emit('socketReconnectTimeout', session);
+          }
+        }, MsrpSdk.Config.socketReconnectTimeout);
+      }
     });
     socket.on('error', function() {
       session.emit('socketError', session);
