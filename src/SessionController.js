@@ -60,8 +60,29 @@ module.exports = function(MsrpSdk) {
       sessionController.emit('end', session);
     });
 
-    session.on('message', function(message, session) {
-      sessionController.emit('message', message, session);
+    session.on('message', function(message, session, encodedMessage) {
+      sessionController.emit('message', message, session, encodedMessage);
+    });
+
+    session.on('messageSent', function(message, session, encodedMessage) {
+      sessionController.emit('messageSent', message, session, encodedMessage);
+    });
+
+    session.on('response', function(response, session, encodedResponse) {
+      sessionController.emit('response', response, session, encodedResponse);
+    });
+
+    session.on('responseSent', function(response, session, encodedResponse) {
+      sessionController.emit('responseSent', response, session, encodedResponse);
+    });
+
+
+    session.on('report', function(report, session, encodedReport) {
+      sessionController.emit('report', report, session, encodedReport);
+    });
+
+    session.on('reportSent', function(report, session, encodedReport) {
+      sessionController.emit('reportSent', report, session, encodedReport);
     });
 
     // TODO: Deprecated
