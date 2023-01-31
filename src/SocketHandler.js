@@ -37,9 +37,9 @@ module.exports = function(MsrpSdk) {
         }
         // Handle each message
         if (parsedMessage.method) {
-          handleIncomingRequest(parsedMessage, socket);
+          handleIncomingRequest(message, parsedMessage, socket);
         } else {
-          handleIncomingResponse(parsedMessage);
+          handleIncomingResponse(message, parsedMessage);
         }
       });
     });
@@ -103,7 +103,7 @@ module.exports = function(MsrpSdk) {
    * @param  {Object} request Request
    * @param  {Object} socket  Socket
    */
-  function handleIncomingRequest(request, socket) {
+  function handleIncomingRequest(encodedRequest, request, socket) {
     // Retrieve Session and other needed parameters
     const toUri = new MsrpSdk.URI(request.toPath[0]);
     const fromUri = new MsrpSdk.URI(request.fromPath[0]);
@@ -154,7 +154,7 @@ module.exports = function(MsrpSdk) {
 
     // Handle MSRP REPORT requests
     if (request.method === 'REPORT') {
-      incomingReport(request);
+      incomingReport(encodedRequest, request);
       return;
     }
 
@@ -163,12 +163,8 @@ module.exports = function(MsrpSdk) {
 
       // Non-chunked messages
       if (request.byteRange.start === 1 && request.continuationFlag === MsrpSdk.Message.Flag.end) {
-        // Emit 'message' event. Do not emit it for heartbeat messages or bodiless messages.
-        const isHeartbeatMessage = (request.contentType === 'text/x-msrp-heartbeat');
-        const isBodilessMessage = (!request.body && !request.contentType);
-        if (!isHeartbeatMessage && !isBodilessMessage) {
-          session.emit('message', request, session);
-        }
+        // Emit 'message' event.
+        session.emit('message', request, session, encodedRequest);
         // Return successful response: 200 OK
         sendResponse(request, socket, toUri.uri, MsrpSdk.Status.OK);
         return;
@@ -227,7 +223,7 @@ module.exports = function(MsrpSdk) {
       delete chunkReceivers[messageId];
       request.body = buffer.toString('utf-8');
       // Emit 'message' event including the complete message
-      session.emit('message', request, session);
+      session.emit('message', request, session, encodedRequest);
       // Return successful response: 200 OK
       sendResponse(request, socket, toUri.uri, MsrpSdk.Status.OK);
       return;
@@ -243,7 +239,7 @@ module.exports = function(MsrpSdk) {
    * Only responses to heartbeats are being handled. The rest responses are ignored.
    * @param  {Object} response Response
    */
-  function handleIncomingResponse(response) {
+  function handleIncomingResponse(encodedResponse, response) {
     // Retrieve Session
     const toUri = new MsrpSdk.URI(response.toPath[0]);
     const session = MsrpSdk.SessionController.getSession(toUri.sessionId);
@@ -260,18 +256,20 @@ module.exports = function(MsrpSdk) {
         MsrpSdk.Logger.debug(`[MSRP SocketHandler] MSRP heartbeat error received from ${response.fromPath} (tid: ${response.tid})`);
         session.emit('heartbeatFailure', session);
       }
-      return;
     }
 
-    // Forward the rest of reponses to the application by emitting a generic event including the message tid
+    // Forward the rest of responses to the application
+    // Emit event used for tracking the response of an specific request with a given TID
     session.emit(`${response.tid}Response`, response);
+    // Emit general response event
+    session.emit('response', response, session, encodedResponse);
   }
 
   /**
    * Helper function for handling incoming reports
    * @param  {Object} report Report
    */
-  function incomingReport(report) {
+  function incomingReport(encodedReport, report) {
     // Retrieve message ID
     const messageId = report.messageId;
     if (!messageId) {
@@ -302,7 +300,12 @@ module.exports = function(MsrpSdk) {
       return;
     }
 
-    // TODO: Pass incoming reports to the application. Ticket: https://github.com/cwysong85/msrp-node-lib/issues/17
+    // Emit report event to the session if it exists
+    const parsedToUri = new MsrpSdk.URI(report.toPath[0]);
+    const session = MsrpSdk.SessionController.getSession(parsedToUri.sessionId);
+    if (session) {
+      session.emit('report', report, session, encodedReport);
+    }
   }
 
   /**
@@ -314,7 +317,10 @@ module.exports = function(MsrpSdk) {
    */
   function sendReport(socket, session, req, status) {
     const statusHeader = ['000', status, MsrpSdk.StatusComment[status]].join(' ');
-    const report = new MsrpSdk.Message.OutgoingRequest(session, 'REPORT');
+    const report = new MsrpSdk.Message.OutgoingRequest({
+      toPath: session.remoteEndpoints,
+      localUri: session.localEndpoint.uri
+    }, 'REPORT');
     report.addHeader('message-id', req.messageId);
     report.addHeader('status', statusHeader);
 
@@ -351,9 +357,13 @@ module.exports = function(MsrpSdk) {
       };
     }
 
-    const encodeMsg = report.encode();
-    socket.write(encodeMsg);
-    traceMsrp(encodeMsg);
+    const encodedReport = report.encode();
+    socket.write(encodedReport);
+
+    // Emit reportSent event
+    session.emit('reportSent', report, session, encodedReport);
+
+    traceMsrp(encodedReport);
   }
 
   /**
@@ -390,6 +400,13 @@ module.exports = function(MsrpSdk) {
       socket.write(encodeMsg);
       traceMsrp(encodeMsg);
 
+      // Emit messageSent event to the session if it exists
+      const parsedFromUri = new MsrpSdk.URI(msg.fromPath[0]);
+      const session = MsrpSdk.SessionController.getSession(parsedFromUri.sessionId);
+      if (session) {
+        session.emit('messageSent', msg, session, encodeMsg);
+      }
+
       // Check whether this sender has now completed
       if (sender.isSendComplete()) {
         // Remove this sender from the active list
@@ -422,12 +439,16 @@ module.exports = function(MsrpSdk) {
     const msg = new MsrpSdk.Message.OutgoingResponse(req, toUri, status);
     const encodeMsg = msg.encode();
     socket.write(encodeMsg, function() {
+      // Emit response event to the session if it exists
+      const parsedToUri = new MsrpSdk.URI(toUri);
+      const session = MsrpSdk.SessionController.getSession(parsedToUri.sessionId);
+      if (session) {
+        session.emit('responseSent', msg, session, encodeMsg);
+      }
+
       // After sending the message, if request has header 'success-report', send back a report
       if (req.getHeader('failure-report') === 'yes') {
-        sendReport(socket, {
-          toPath: req.fromPath,
-          localUri: toUri
-        }, req, status);
+        sendReport(socket, session, req, status);
       }
     });
 

@@ -271,7 +271,7 @@ module.exports = function(MsrpSdk) {
       // Socket Reconnect Timeout logic
       if (!session.ended && MsrpSdk.Config.socketReconnectTimeout > 0) {
         setTimeout(function() {
-          if(!session.ended && session.socket.destroyed) {
+          if (!session.ended && session.socket.destroyed) {
             session.emit('socketReconnectTimeout', session);
           }
         }, MsrpSdk.Config.socketReconnectTimeout);
@@ -402,8 +402,12 @@ module.exports = function(MsrpSdk) {
           toPath: session.remoteEndpoints,
           localUri: session.localEndpoint.uri
         }, 'SEND');
+        request.addHeader('message-id', MsrpSdk.Util.newMID());
         try {
-          socket.write(request.encode(), function() {
+          const encodedRequest = request.encode();
+          socket.write(encodedRequest, function() {
+            // Emit 'messageSent' event.
+            session.emit('messageSent', request, session, encodedRequest);
             if (callback) {
               callback();
             }
