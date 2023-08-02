@@ -105,8 +105,9 @@ module.exports = function(MsrpSdk) {
    * Function called during the SDP negotiation to create the local SDP.
    * @param  {Function} onSuccess onSuccess callback
    * @param  {Function} onFailure onFailure callback
+   * @param  {Object} mediaHint mediaHint options
    */
-  Session.prototype.getDescription = function(onSuccess, onFailure) {
+  Session.prototype.getDescription = function(onSuccess, onFailure, mediaHint) {
     var session = this;
     MsrpSdk.Logger.debug('[MSRP Session] Creating local SDP...');
 
@@ -121,7 +122,7 @@ module.exports = function(MsrpSdk) {
     // Connection address
     localSdp.connection.address = MsrpSdk.Config.host;
     // Accept-types
-    localSdp.addAttribute('accept-types', MsrpSdk.Config.acceptTypes);
+    localSdp.addAttribute('accept-types', (mediaHint && mediaHint.acceptTypes) || MsrpSdk.Config.acceptTypes);
     // Setup
     if (session.remoteSdp) {
       if (session.remoteSdp.attributes.setup) {
