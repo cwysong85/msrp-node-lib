@@ -420,7 +420,10 @@ module.exports = function(MsrpSdk) {
     }
 
     // Start heartbeats if enabled and not running yet
-    if (MsrpSdk.Config.enableHeartbeats !== false && !session.heartbeatPingFunc && !session.heartbeatTimeoutFunc) {
+    var canHeartbeat = session.remoteSdp.attributes['accept-types'].some(function(acceptType) {
+      return acceptType === 'text/x-msrp-heartbeat' || acceptType === 'text/*' || acceptType === '*';
+    });
+    if (canHeartbeat && MsrpSdk.Config.enableHeartbeats !== false && !session.heartbeatPingFunc && !session.heartbeatTimeoutFunc) {
       session.startHeartbeats();
     }
 
