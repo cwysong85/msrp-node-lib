@@ -244,6 +244,12 @@ module.exports = function(MsrpSdk) {
     const toUri = new MsrpSdk.URI(response.toPath[0]);
     const session = MsrpSdk.SessionController.getSession(toUri.sessionId);
 
+    // Check if the session exists
+    if (!session) {
+      // If session doesn't exists, log and return
+      MsrpSdk.Logger.warn('[MSRP SocketHandler] Error while handling response: session does not exist');
+      return;
+    }
     // Check if it is a heartbeat response and handle it as needed and return
     const isHeartbeatResponse = response.tid && session && session.heartbeatsTransIds[response.tid];
     if (isHeartbeatResponse) {
