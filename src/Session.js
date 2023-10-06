@@ -69,7 +69,7 @@ module.exports = function(MsrpSdk) {
     if (session.remoteSdp.attributes.sendonly || session.remoteSdp.attributes.inactive) {
       canSend = false;
     }
-    if (session.remoteSdp.media && session.remoteSdp.media[0] && session.remoteSdp.media[0].attributes) {
+    if (session.remoteSdp.media?.[0]?.attributes) {
       if (session.remoteSdp.media[0].attributes.sendonly || session.remoteSdp.media[0].attributes.inactive) {
         canSend = false;
       }
@@ -122,7 +122,7 @@ module.exports = function(MsrpSdk) {
     // Connection address
     localSdp.connection.address = MsrpSdk.Config.host;
     // Accept-types
-    localSdp.addAttribute('accept-types', (mediaHint && mediaHint.acceptTypes) || MsrpSdk.Config.acceptTypes);
+    localSdp.addAttribute('accept-types', mediaHint?.acceptTypes ?? MsrpSdk.Config.acceptTypes);
     // Setup
     if (session.remoteSdp) {
       if (session.remoteSdp.attributes.setup) {
