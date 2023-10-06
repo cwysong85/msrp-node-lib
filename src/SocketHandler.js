@@ -13,6 +13,9 @@ module.exports = function(MsrpSdk) {
     // Set socket encoding so we get Strings in the 'data' event
     socket.setEncoding('utf8');
 
+    // set a read buffer so we can cache data if we read incomplete packets
+    socket.read_buffer = '';
+
     // Set socket timeout as needed
     if (MsrpSdk.Config.socketTimeout > 0) {
       MsrpSdk.Logger.debug(`[MSRP SocketHandler] Setting socket timeout to ${MsrpSdk.Config.socketTimeout}`);
@@ -26,14 +29,16 @@ module.exports = function(MsrpSdk) {
       // Send data to tracing function
       traceMsrp(data);
 
-      // Incoming data may include more than one MSRP message. Match messages using regex.
-      const messages = data.match(/MSRP [^]*?-{7}\S*?[$#+]/g);
-      messages.forEach(function(message) {
+      socket.read_buffer += data;
+
+      var reg = /MSRP (\S+).*?\n-------\1[$#+]\r?\n/gs;
+      var lastIndex = 0;
+      while (message = reg.exec(socket.read_buffer)) {
         // Parse each message
-        const parsedMessage = MsrpSdk.parseMessage(message);
+        const parsedMessage = MsrpSdk.parseMessage(message[0]);
         if (!parsedMessage) {
           MsrpSdk.Logger.warn(`[MSRP SocketHandler] Unable to parse incoming message. Message was discarded. Message: ${message}`);
-          return;
+          continue;
         }
         // Handle each message
         if (parsedMessage.method) {
@@ -41,7 +46,9 @@ module.exports = function(MsrpSdk) {
         } else {
           handleIncomingResponse(message, parsedMessage);
         }
-      });
+        lastIndex = reg.lastIndex;
+      }
+      socket.read_buffer = socket.read_buffer.substring(lastIndex);
     });
 
     // On connect:
@@ -244,6 +251,12 @@ module.exports = function(MsrpSdk) {
     const toUri = new MsrpSdk.URI(response.toPath[0]);
     const session = MsrpSdk.SessionController.getSession(toUri.sessionId);
 
+    // Check if the session exists
+    if (!session) {
+      // If session doesn't exists, log and return
+      MsrpSdk.Logger.warn('[MSRP SocketHandler] Error while handling response: session does not exist');
+      return;
+    }
     // Check if it is a heartbeat response and handle it as needed and return
     const isHeartbeatResponse = response.tid && session && session.heartbeatsTransIds[response.tid];
     if (isHeartbeatResponse) {
