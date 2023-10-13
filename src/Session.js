@@ -257,7 +257,7 @@ module.exports = function(MsrpSdk) {
   };
 
   /**
-   * Sets the session's socket and and the needed socket event listeners
+   * Sets the session's socket and the needed socket event listeners
    * @param  {Object} socket Socket
    */
   Session.prototype.setSocket = function(socket) {
@@ -272,7 +272,7 @@ module.exports = function(MsrpSdk) {
       // Socket Reconnect Timeout logic
       if (!session.ended && MsrpSdk.Config.socketReconnectTimeout > 0) {
         setTimeout(function() {
-          if (!session.ended && session.socket.destroyed) {
+          if (!session.ended && session.socket?.destroyed) {
             session.emit('socketReconnectTimeout', session);
           }
         }, MsrpSdk.Config.socketReconnectTimeout);
