@@ -69,7 +69,7 @@ module.exports = function(MsrpSdk) {
     if (session.remoteSdp.attributes.sendonly || session.remoteSdp.attributes.inactive) {
       canSend = false;
     }
-    if (session.remoteSdp.media && session.remoteSdp.media[0] && session.remoteSdp.media[0].attributes) {
+    if (session.remoteSdp.media?.[0]?.attributes) {
       if (session.remoteSdp.media[0].attributes.sendonly || session.remoteSdp.media[0].attributes.inactive) {
         canSend = false;
       }
@@ -122,7 +122,7 @@ module.exports = function(MsrpSdk) {
     // Connection address
     localSdp.connection.address = MsrpSdk.Config.host;
     // Accept-types
-    localSdp.addAttribute('accept-types', (mediaHint && mediaHint.acceptTypes) || MsrpSdk.Config.acceptTypes);
+    localSdp.addAttribute('accept-types', mediaHint?.acceptTypes ?? MsrpSdk.Config.acceptTypes);
     // Setup
     if (session.remoteSdp) {
       if (session.remoteSdp.attributes.setup) {
@@ -257,7 +257,7 @@ module.exports = function(MsrpSdk) {
   };
 
   /**
-   * Sets the session's socket and and the needed socket event listeners
+   * Sets the session's socket and the needed socket event listeners
    * @param  {Object} socket Socket
    */
   Session.prototype.setSocket = function(socket) {
@@ -272,7 +272,7 @@ module.exports = function(MsrpSdk) {
       // Socket Reconnect Timeout logic
       if (!session.ended && MsrpSdk.Config.socketReconnectTimeout > 0) {
         setTimeout(function() {
-          if (!session.ended && session.socket.destroyed) {
+          if (!session.ended && session.socket?.destroyed) {
             session.emit('socketReconnectTimeout', session);
           }
         }, MsrpSdk.Config.socketReconnectTimeout);

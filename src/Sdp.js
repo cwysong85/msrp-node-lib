@@ -252,9 +252,7 @@ module.exports = function(MsrpSdk) {
       aValues = this.attributes[aName];
 
       sdp += 'a=' + aName;
-      if (aValues && typeof aValues === 'string') {
-        sdp += ':' + aValues;
-      } else if (aValues) {
+      if (aValues) {
         sdp += ':' + aValues.join(' ');
       }
       sdp += lineEnd;
