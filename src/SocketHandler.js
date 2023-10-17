@@ -33,9 +33,9 @@ module.exports = function(MsrpSdk) {
 
       var reg = /MSRP (\S+).*?\n-------\1[$#+]\r?\n/gs;
       var lastIndex = 0;
-      while (message = reg.exec(socket.read_buffer)) {
+      while (message = reg.exec(socket.read_buffer)?.[0]) {
         // Parse each message
-        const parsedMessage = MsrpSdk.parseMessage(message[0]);
+        const parsedMessage = MsrpSdk.parseMessage(message);
         if (!parsedMessage) {
           MsrpSdk.Logger.warn(`[MSRP SocketHandler] Unable to parse incoming message. Message was discarded. Message: ${message}`);
           continue;
