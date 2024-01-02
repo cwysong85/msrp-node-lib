@@ -124,7 +124,9 @@ module.exports = function(MsrpSdk) {
     // Accept-types
     localSdp.addAttribute('accept-types', mediaHint?.acceptTypes ?? MsrpSdk.Config.acceptTypes);
     // Setup
-    if (session.remoteSdp) {
+    if (MsrpSdk.Config.forceSetup) {
+      localSdp.addAttribute('setup', MsrpSdk.Config.setup);
+    } else if (session.remoteSdp) {
       if (session.remoteSdp.attributes.setup) {
         if (session.remoteSdp.attributes.setup[0] === 'active' || session.remoteSdp.attributes.setup[0] === 'actpass') {
           localSdp.addAttribute('setup', 'passive');
