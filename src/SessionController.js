@@ -1,13 +1,13 @@
 // Dependencies
-var util = require('util');
-var EventEmitter = require('events').EventEmitter;
+const util = require('util');
+const EventEmitter = require('events').EventEmitter;
 
 module.exports = function(MsrpSdk) {
 
   /**
    * Session controller
    */
-  var SessionController = function() {
+  const SessionController = function() {
     this.sessions = []; // Sessions array
   };
   util.inherits(SessionController, EventEmitter);
@@ -17,8 +17,8 @@ module.exports = function(MsrpSdk) {
    * @return {Session} Session
    */
   SessionController.prototype.createSession = function() {
-    var sessionController = this;
-    var session = new MsrpSdk.Session();
+    const sessionController = this;
+    const session = new MsrpSdk.Session();
     forwardSessionEvents(session, sessionController);
     sessionController.sessions.push(session);
     return session;
@@ -30,9 +30,22 @@ module.exports = function(MsrpSdk) {
    * @return {Session}          Session
    */
   SessionController.prototype.getSession = function(sessionId) {
-    var sessionController = this;
+    const sessionController = this;
     return sessionController.sessions.find(function(session) {
       return session.sid === sessionId;
+    });
+  };
+
+  /**
+   * Gets sessions by remote socket address
+   * @param  {String} socketAddress Socket address
+   * @return {Array<Session>}       Sessions
+   */
+  SessionController.prototype.getSessionsByRemoteSocketAddress = function(socketAddress) {
+    const sessionController = this;
+    return sessionController.sessions.filter(function(session) {
+      const remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
+      return `${remoteEndpointUri.authority}:${remoteEndpointUri.port}` === socketAddress;
     });
   };
 
@@ -41,7 +54,7 @@ module.exports = function(MsrpSdk) {
    * @param  {Session} session Session
    */
   SessionController.prototype.removeSession = function(session) {
-    var sessionController = this;
+    const sessionController = this;
     if (sessionController.sessions.includes(session)) {
       sessionController.sessions.splice(sessionController.sessions.indexOf(session), 1);
     }
@@ -85,11 +98,6 @@ module.exports = function(MsrpSdk) {
       sessionController.emit('reportSent', report, session, encodedReport);
     });
 
-    // TODO: Deprecated
-    session.on('reinvite', function(session) {
-      sessionController.emit('reinvite', session);
-    });
-
     session.on('update', function(session) {
       sessionController.emit('update', session);
     });
@@ -98,11 +106,6 @@ module.exports = function(MsrpSdk) {
     // Socket events
     session.on('socketClose', function(hadError, session) {
       sessionController.emit('socketClose', hadError, session);
-    });
-
-    // TODO: Deprecated
-    session.on('socketConnect', function(session) {
-      sessionController.emit('socketConnect', session);
     });
 
     session.on('socketError', function(session) {

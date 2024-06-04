@@ -1,14 +1,10 @@
 // Dependencies
-var net = require('net');
-var util = require('util');
-var portfinder = require('portfinder');
-var EventEmitter = require('events').EventEmitter;
+const net = require('net');
+const util = require('util');
+const portfinder = require('portfinder');
+const EventEmitter = require('events').EventEmitter;
 
 module.exports = function(MsrpSdk) {
-  // Load configuration
-  var configuredBasePort = MsrpSdk.Config.outboundBasePort || 49152;
-  var configuredHighestPort = MsrpSdk.Config.outboundHighestPort || 65535;
-
   /**
    * MSRP Session
    * @class
@@ -20,14 +16,11 @@ module.exports = function(MsrpSdk) {
    * @property {Object} socket Session socket
    * @property {Boolean} updated Flag indicating if Session has been updated since it was initially created
    * @property {Boolean} ended Flag that indicating if Session is ended
-   * @property {Boolean} reinvite (Deprecated) Flag that indicates if a re-INVITE has just been received // TODO: Deprecated
    * @property {Object} heartbeatsTransIds Dictionary of heartbeats transaction IDs
    * @property {Function} heartbeatPingFunc Ping function for heartbeats
    * @property {Function} heartbeatTimeoutFunc Timeout function for heartbeats
-   * @property {Boolean} setHasNotRan Flag indicating if setDescription has already been called during the SDP negotiation
-   * @property {Boolean} getHasNotRan Flag indicating if getDescription has already been called during the SDP negotiation
    */
-  var Session = function() {
+  const Session = function() {
     this.sid = MsrpSdk.Util.newSID();
     this.localEndpoint = null;
     this.remoteEndpoints = [];
@@ -36,12 +29,10 @@ module.exports = function(MsrpSdk) {
     this.socket = null;
     this.updated = false;
     this.ended = false;
-    this.reinvite = false; // TODO: Deprecated
     this.heartbeatsTransIds = {};
     this.heartbeatPingFunc = null;
     this.heartbeatTimeoutFunc = null;
-    this.setHasNotRan = true;
-    this.getHasNotRan = true;
+    this.sdpState = null;
   };
 
   util.inherits(Session, EventEmitter); // NOTE: Sessions emit events in SocketHandler too
@@ -53,16 +44,16 @@ module.exports = function(MsrpSdk) {
    * @param  {String}   contentType Message Content-Type
    */
   Session.prototype.sendMessage = function(body, callback, contentType = 'text/plain', requestReports) {
-    var session = this;
+    const session = this;
 
     // Check if the remote endpoint will accept the message by checking its SDP
     // accept-types
-    var contentValues = contentType.split('/');
-    var canSend = session.remoteSdp.attributes['accept-types'].some(function(acceptType) {
+    const contentValues = contentType.split('/');
+    let canSend = session.remoteSdp.attributes['accept-types'].some(function(acceptType) {
       if (acceptType === contentType || acceptType === '*') {
         return true;
       }
-      var acceptValues = acceptType.split('/');
+      const acceptValues = acceptType.split('/');
       return (acceptValues[0] === contentValues[0] && acceptValues[1] === '*');
     });
     // sendonly/inactive 
@@ -105,77 +96,81 @@ module.exports = function(MsrpSdk) {
    * Function called during the SDP negotiation to create the local SDP.
    * @param  {Function} onSuccess onSuccess callback
    * @param  {Function} onFailure onFailure callback
-   * @param  {Object} mediaHint mediaHint options
+   * @param  {Object}   mediaHint mediaHint options
    */
-  Session.prototype.getDescription = function(onSuccess, onFailure, mediaHint) {
-    var session = this;
-    MsrpSdk.Logger.debug('[MSRP Session] Creating local SDP...');
+  Session.prototype.getDescription = async function(onSuccess, onFailure, mediaHint) {
+    try {
+      const session = this;
+      MsrpSdk.Logger.debug('[MSRP Session] Creating local SDP...');
 
-    // Create and configure local SDP
-    var localSdp = new MsrpSdk.Sdp.Session();
-    // Origin
-    localSdp.origin.id = MsrpSdk.Util.dateToNtpTime(new Date());
-    localSdp.origin.version = localSdp.origin.id;
-    localSdp.origin.address = MsrpSdk.Config.host;
-    // Session-name
-    localSdp.sessionName = MsrpSdk.Config.sessionName;
-    // Connection address
-    localSdp.connection.address = MsrpSdk.Config.host;
-    // Accept-types
-    localSdp.addAttribute('accept-types', mediaHint?.acceptTypes ?? MsrpSdk.Config.acceptTypes);
-    // Setup
-    if (MsrpSdk.Config.forceSetup) {
-      localSdp.addAttribute('setup', MsrpSdk.Config.setup);
-    } else if (session.remoteSdp) {
-      if (session.remoteSdp.attributes.setup) {
-        if (session.remoteSdp.attributes.setup[0] === 'active' || session.remoteSdp.attributes.setup[0] === 'actpass') {
-          localSdp.addAttribute('setup', 'passive');
-        } else if (session.remoteSdp.attributes.setup[0] === 'passive') {
-          localSdp.addAttribute('setup', 'active');
+      // Create local SDP
+      const localSdp = new MsrpSdk.Sdp.Session();
+      // Origin
+      localSdp.origin.id = MsrpSdk.Util.dateToNtpTime(new Date());
+      localSdp.origin.version = localSdp.origin.id;
+      localSdp.origin.address = MsrpSdk.Config.host;
+      // Session-name
+      localSdp.sessionName = MsrpSdk.Config.sessionName;
+      // Connection address
+      localSdp.connection.address = MsrpSdk.Config.host;
+      // Accept-types
+      localSdp.addAttribute('accept-types', mediaHint?.acceptTypes ?? MsrpSdk.Config.acceptTypes);
+      // Setup
+      if (MsrpSdk.Config.forceSetup) {
+        localSdp.addAttribute('setup', MsrpSdk.Config.setup);
+      } else if (session.remoteSdp) {
+        if (session.remoteSdp.attributes.setup) {
+          if (session.remoteSdp.attributes.setup[0] === 'active' || session.remoteSdp.attributes.setup[0] === 'actpass') {
+            localSdp.addAttribute('setup', 'passive');
+          } else if (session.remoteSdp.attributes.setup[0] === 'passive') {
+            localSdp.addAttribute('setup', 'active');
+          } else {
+            MsrpSdk.Logger.error('[MSRP Session] Invalid remote a=setup value');
+            return onFailure('Invalid remote a=setup value');
+          }
         } else {
-          MsrpSdk.Logger.error('[MSRP Session] Invalid remote a=setup value');
-          return onFailure('Invalid remote a=setup value');
+          localSdp.addAttribute('setup', 'passive');
         }
       } else {
-        localSdp.addAttribute('setup', 'passive');
+        localSdp.addAttribute('setup', MsrpSdk.Config.setup === 'passive' ? 'passive' : 'active');
       }
-    } else {
-      localSdp.addAttribute('setup', MsrpSdk.Config.setup === 'passive' ? 'passive' : 'active');
-    }
-    // Get the assigned local port for configuring the path and the port
-    getAssignedPort(localSdp.attributes.setup[0])
-      .then(function(assignedPort) {
-        // Path
-        var path = 'msrp://' + MsrpSdk.Config.host + ':' + assignedPort + '/' + session.sid + ';tcp';
-        localSdp.addAttribute('path', path);
-        // Port
-        localSdp.media.push('message ' + assignedPort + ' TCP/MSRP *');
+      // Path
+      const assignedPort = await getAssignedPort(localSdp.attributes.setup[0], session.localEndpoint?.port);
+      const path = `msrp://${MsrpSdk.Config.host}:${assignedPort}/${session.sid};tcp`;
+      localSdp.addAttribute('path', path);
+      // Media
+      localSdp.media.push(`message ${assignedPort} TCP/MSRP *`);
 
-        // Success! Send local SDP
-        onSuccess(localSdp.toString());
-
-        // Update session information
-        session.localSdp = localSdp;
-        session.localEndpoint = new MsrpSdk.URI(path);
-        session.getHasNotRan = false;
-
-        // Extra logic for session updates
-        var callback;
-        if (session.updated) {
-          // Emit update event after calling startConnection
-          callback = function() {
-            session.emit('update', session);
-            session.emit('reinvite', session); // TODO: Deprecated
-          };
+      // If we are updating an existing session, close existing socket when needed
+      if (session.localSdp) {
+        if (session.socket) {
+          if (localSdp.attributes.path !== session.localSdp.attributes.path) {
+            MsrpSdk.Logger.debug(`[MSRP Session] Local path updated: ${session.localSdp.attributes.path} -> ${localSdp.attributes.path}`);
+            session.closeSocket();
+          }
+          if (localSdp.attributes.inactive) {
+            MsrpSdk.Logger.debug('[MSRP Session] Local party connection changed to inactive');
+            session.closeSocket();
+          }
         }
+      }
 
-        // Start connection if needed
-        session.startConnection(callback);
-      })
-      .catch(function(error) {
-        MsrpSdk.Logger.error(`[MSRP Session] An error ocurred while creating the local SDP: ${error.toString()}`);
-        return;
-      });
+      // Update session
+      session.localSdp = localSdp;
+      session.localEndpoint = new MsrpSdk.URI(path);
+
+      // Success! Send local SDP and update SDP negotiation state
+      onSuccess(localSdp.toString());
+      session.updateSdpState();
+
+      // If the SDP negotiation is complete, proceed to connection setup
+      if (session.sdpState === 'answered') {
+        session.setupConnection();
+      }
+    } catch (error) {
+      MsrpSdk.Logger.error(`[MSRP Session] An error ocurred while creating the local SDP: ${error.toString()}`);
+      return;
+    }
   };
 
   /**
@@ -185,57 +180,60 @@ module.exports = function(MsrpSdk) {
    * @param  {Function} onFailure   onFailure callback
    */
   Session.prototype.setDescription = function(description, onSuccess, onFailure) {
-    var session = this;
-    MsrpSdk.Logger.debug('[MSRP Session] Processing remote SDP...');
+    try {
+      const session = this;
+      MsrpSdk.Logger.debug('[MSRP Session] Processing remote SDP...');
 
-    // Parse received SDP
-    var remoteSdp = new MsrpSdk.Sdp.Session(description);
+      // Parse remote SDP
+      const remoteSdp = new MsrpSdk.Sdp.Session(description);
+      // Retrieve MSRP media attributes
+      const remoteMsrpMedia = remoteSdp.media.find(function(mediaObject) {
+        return mediaObject.proto.includes('/MSRP');
+      });
+      remoteSdp.attributes = remoteMsrpMedia.attributes;
+      // Path check
+      if (!remoteSdp.attributes.path) {
+        MsrpSdk.Logger.error('[MSRP Session] Path attribute missing in remote endpoint SDP');
+        return onFailure('Path attribute missing in remote endpoint SDP');
+      }
 
-    // Retrieve MSRP media attributes
-    var remoteMsrpMedia = remoteSdp.media.find(function(mediaObject) {
-      return mediaObject.proto.includes('/MSRP');
-    });
-    remoteSdp.attributes = remoteMsrpMedia.attributes;
-
-    // Path check
-    if (!remoteSdp.attributes.path) {
-      MsrpSdk.Logger.error('[MSRP Session] Path attribute missing in remote endpoint SDP');
-      return onFailure('Path attribute missing in remote endpoint SDP');
-    }
-
-    // If we are updating an existing session, enable updated flag and close existing socket when needed
-    if (session.remoteSdp) {
-      session.updated = true;
-      session.reinvite = true; // Deprecated
-      if (session.socket) {
-        if (remoteSdp.attributes.path !== session.remoteSdp.attributes.path) {
-          MsrpSdk.Logger.debug(`[MSRP Session] Remote path updated: ${session.remoteSdp.attributes.path.join(' ')} -> ${remoteSdp.attributes.path.join(' ')}`);
-          session.closeSocket();
-        }
-        if (remoteSdp.attributes.inactive) {
-          MsrpSdk.Logger.debug('[MSRP Session] Remote party connection changed to inactive');
-          session.closeSocket();
+      // If we are updating an existing session, close existing socket when needed
+      if (session.remoteSdp) {
+        if (session.socket) {
+          if (remoteSdp.attributes.path !== session.remoteSdp.attributes.path) {
+            MsrpSdk.Logger.debug(`[MSRP Session] Remote path updated: ${session.remoteSdp.attributes.path.join(' ')} -> ${remoteSdp.attributes.path.join(' ')}`);
+            session.closeSocket();
+          }
+          if (remoteSdp.attributes.inactive) {
+            MsrpSdk.Logger.debug('[MSRP Session] Remote party connection changed to inactive');
+            session.closeSocket();
+          }
         }
       }
+
+      // Update session information
+      session.remoteSdp = remoteSdp;
+      session.remoteEndpoints = remoteSdp.attributes.path;
+
+      // Success! Remote SDP processed. Update SDP negotiation state.
+      onSuccess();
+      session.updateSdpState();
+
+      // If the SDP negotiation is complete, proceed to connection setup
+      if (session.sdpState === 'answered') {
+        session.setupConnection();
+      }
+    } catch (error) {
+      MsrpSdk.Logger.error(`[MSRP Session] An error ocurred while processing the remote SDP: ${error.toString()}`);
+      return;
     }
-
-    // Update session information
-    session.remoteSdp = remoteSdp;
-    session.remoteEndpoints = remoteSdp.attributes.path;
-    session.setHasNotRan = false;
-
-    // Success! Remote SDP processed
-    onSuccess();
-
-    // Start connection if needed
-    session.startConnection();
   };
 
   /**
    * Ends a session
    */
   Session.prototype.end = function() {
-    var session = this;
+    const session = this;
 
     // Return if session is already ended
     if (session.ended) {
@@ -260,13 +258,24 @@ module.exports = function(MsrpSdk) {
 
   /**
    * Sets the session's socket and the needed socket event listeners
-   * @param  {Object} socket Socket
+   * @param  {Object}   socket    Socket
+   * @param  {Boolean}  sdpCheck  Enable SDP check
    */
-  Session.prototype.setSocket = function(socket) {
-    var session = this;
-    session.socket = socket;
+  Session.prototype.setSocket = function(socket, sdpCheck = true) {
+    const session = this;
 
-    // TODO: Add origin check. Ticket: https://github.com/cwysong85/msrp-node-lib/issues/20
+    // If sdpCheck is enabled, do not set socket if it is not coming from the expected address
+    if (sdpCheck) {
+      const remoteSocketAddress = `${socket.remoteAddress}:${socket.remotePort}`;
+      const remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
+      const expectedSocketAddress = `${remoteEndpointUri.authority}:${remoteEndpointUri.port}`;
+      if (remoteSocketAddress !== expectedSocketAddress) {
+        throw new Error(`Socket does not belong to the expected remote endpoint. Got ${remoteSocketAddress}, expected ${expectedSocketAddress}.`);
+      }
+    }
+
+    // Set socket
+    session.socket = socket;
 
     // Forward socket events
     socket.on('close', function(hadError) {
@@ -287,19 +296,18 @@ module.exports = function(MsrpSdk) {
       session.emit('socketTimeout', session);
     });
 
-    // Emit socketConnect event
+    // Emit socketSet event
     session.emit('socketSet', session);
-    session.emit('socketConnect', session); // TODO: Deprecated
   };
 
   /**
    * Closes a session socket
    */
   Session.prototype.closeSocket = function() {
-    var session = this;
+    const session = this;
     if (session.socket) {
       // Check if the session socket is being reused by other session
-      var isSocketReused = MsrpSdk.SessionController.sessions.filter(function(sessionItem) {
+      const isSocketReused = MsrpSdk.SessionController.sessions.filter(function(sessionItem) {
         return sessionItem.socket === session.socket;
       }).length > 1;
 
@@ -319,7 +327,7 @@ module.exports = function(MsrpSdk) {
    * Stops MSRP heartbeats
    */
   Session.prototype.stopHeartbeats = function() {
-    var session = this;
+    const session = this;
     MsrpSdk.Logger.debug(`[MSRP Session] Stopping MSRP heartbeats for session ${session.sid}...`);
     clearInterval(session.heartbeatPingFunc);
     clearInterval(session.heartbeatTimeoutFunc);
@@ -331,9 +339,9 @@ module.exports = function(MsrpSdk) {
    * Starts MSRP heartbeats
    */
   Session.prototype.startHeartbeats = function() {
-    var session = this;
-    var heartbeatsInterval = MsrpSdk.Config.heartbeatsInterval || 5000;
-    var heartbeatsTimeout = MsrpSdk.Config.heartbeatsTimeout || 10000;
+    const session = this;
+    const heartbeatsInterval = MsrpSdk.Config.heartbeatsInterval || 5000;
+    const heartbeatsTimeout = MsrpSdk.Config.heartbeatsTimeout || 10000;
 
     MsrpSdk.Logger.debug(`[MSRP Session] Starting MSRP heartbeats for session ${session.sid}...`);
 
@@ -345,9 +353,9 @@ module.exports = function(MsrpSdk) {
 
     // Look for timeouts every second
     function heartbeatTimeoutMonitor() {
-      for (var key in session.heartbeatsTransIds) { // Loop through all stored heartbeats
+      for (const key in session.heartbeatsTransIds) { // Loop through all stored heartbeats
         if (session.heartbeatsTransIds.hasOwnProperty(key)) { // Check if key has a property
-          var diff = Date.now() - session.heartbeatsTransIds[key]; // Get time difference
+          const diff = Date.now() - session.heartbeatsTransIds[key]; // Get time difference
           if (diff > heartbeatsTimeout) { // If the difference is greater than heartbeatsTimeout
             MsrpSdk.Logger.error(`[MSRP Session] MSRP heartbeat timeout for session ${session.sid}`);
             session.emit('heartbeatTimeout', session);
@@ -360,21 +368,14 @@ module.exports = function(MsrpSdk) {
   };
 
   /**
-   * Helper function for establishing connections when the SDP negotiation has been completed
-   * @param  {Function} callback Callback
+   * Helper function for connection setup once the SDP negotiation has been completed
    */
-  Session.prototype.startConnection = function(callback) {
-    var session = this;
+  Session.prototype.setupConnection = function() {
+    const session = this;
 
     // If the SDP negotiation has not been completed, return
-    if (session.getHasNotRan || session.setHasNotRan || !session.remoteSdp || !session.localSdp) {
+    if (session.sdpState !== 'answered') {
       MsrpSdk.Logger.debug('[MSRP Session] Unable to start connection yet. SDP negotiation in progress.');
-      return;
-    }
-
-    // If the session has an active connection, return
-    if (session.socket && !session.socket.destroyed) {
-      MsrpSdk.Logger.warn('[MSRP Session] Session already has an active connection.');
       return;
     }
 
@@ -384,69 +385,114 @@ module.exports = function(MsrpSdk) {
       return;
     }
 
+    // Get remote and local endpoint URIs
+    const remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
+    const localEndpointUri = session.localEndpoint;
+
     // If the local endpoint is active, connect to the remote party
     if (session.localSdp.attributes.setup[0] === 'active') {
-      var remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
-      var localEndpointUri = session.localEndpoint;
-
       // Create socket and connect
-      MsrpSdk.Logger.debug(`[MSRP Session] Creating socket for session ${session.sid}...`);
-      var socket = new MsrpSdk.SocketHandler(new net.Socket());
+      MsrpSdk.Logger.debug(`[MSRP Session] MSRP session ${session.sid} local endpoint is active. Creating socket...`);
+      const socket = new MsrpSdk.SocketHandler(new net.Socket());
       socket.connect({
         host: remoteEndpointUri.authority,
         port: remoteEndpointUri.port,
         localAddress: localEndpointUri.authority,
         localPort: parseInt(localEndpointUri.port)
-      }, function() {
-        // Assign socket to the session
-        session.setSocket(socket);
-        // Send bodiless MSRP message
-        var request = new MsrpSdk.Message.OutgoingRequest({
-          toPath: session.remoteEndpoints,
-          localUri: session.localEndpoint.uri
-        }, 'SEND');
-        request.addHeader('message-id', MsrpSdk.Util.newMID());
+      }, () => {
         try {
+          // Assign socket to the session
+          session.setSocket(socket);
+          // Send bodiless MSRP message
+          const request = new MsrpSdk.Message.OutgoingRequest({
+            toPath: session.remoteEndpoints,
+            localUri: session.localEndpoint.uri
+          }, 'SEND');
+          request.addHeader('message-id', MsrpSdk.Util.newMID());
           const encodedRequest = request.encode();
-          socket.write(encodedRequest, function() {
+          socket.write(encodedRequest, () => {
             // Emit 'messageSent' event.
             session.emit('messageSent', request, session, encodedRequest);
-            if (callback) {
-              callback();
-            }
           });
         } catch (error) {
-          MsrpSdk.Logger.error(`[MSRP Session] An error ocurred while sending the initial bodiless MSRP message: ${error.toString()}`);
+          MsrpSdk.Logger.error(`[MSRP Session] Error during MSRP session ${session.sid} socket initialization: ${error.toString()}`);
         }
       });
+    } else {
+      // Check if there is a dangling socket waiting to be assigned to this session
+      const socketIndex = MsrpSdk.Server.danglingSockets.findIndex(function(danglingSocket) {
+        return danglingSocket.remoteAddress === remoteEndpointUri.authority && danglingSocket.remotePort == remoteEndpointUri.port;
+      });
+      if (socketIndex !== -1) {
+        try {
+          // If there is a socket, assign it to the session and remove it from the dangling sockets list
+          MsrpSdk.Logger.debug(`[MSRP Session] Found dangling socket for MSRP Session ID ${session.sid}. Setting socket...`);
+          const socket = MsrpSdk.Server.danglingSockets[socketIndex];
+          MsrpSdk.Server.danglingSockets.splice(socketIndex, 1);
+          session.setSocket(socket);
+        } catch (error) {
+          MsrpSdk.Logger.error(`[MSRP Session] Error setting socket for session ${session.sid}: ${error}`);
+        }
+      } else {
+        // If there is no socket, wait for the remote party to connect
+        MsrpSdk.Logger.debug(`[MSRP Session] No dangling socket found for session ${session.sid}. Waiting for remote party to connect...`);
+      }
+    }
+
+    // Emit 'update' event if the session has been updated
+    if (session.updated) {
+      session.emit('update', session);
     }
 
     // Start heartbeats if enabled and not running yet
-    var canHeartbeat = session.remoteSdp.attributes['accept-types'].some(function(acceptType) {
+    const canHeartbeat = session.remoteSdp.attributes['accept-types'].some(function(acceptType) {
       return acceptType === 'text/x-msrp-heartbeat' || acceptType === 'text/*' || acceptType === '*';
     });
     if (canHeartbeat && MsrpSdk.Config.enableHeartbeats !== false && !session.heartbeatPingFunc && !session.heartbeatTimeoutFunc) {
       session.startHeartbeats();
     }
-
-    // Reset SDP negotiation flags
-    session.getHasNotRan = true;
-    session.setHasNotRan = true;
   };
 
   /**
-   * Helper function for getting the local port to be used in the session
-   * @param  {String} setup Local setup line content
-   * @return {Number}       Local port to be used in the session
+   * Helper function for updating SDP negotiation state
    */
-  function getAssignedPort(setup) {
-    return new Promise(function(resolve, reject) {
+  Session.prototype.updateSdpState = function() {
+    const session = this;
+    switch (session.sdpState) {
+      case null:
+        session.sdpState = 'offered';
+        break;
+      case 'offered':
+        session.sdpState = 'answered';
+        break;
+      case 'answered':
+        session.sdpState = 'offered';
+        session.updated = true;
+        break;
+    }
+    MsrpSdk.Logger.debug(`[MSRP Session] SDP negotiation state updated to ${session.sdpState} for session ${session.sid}`);
+  };
+
+  /**
+   * Helper function for getting the local port to be used
+   * @param  {String}           setup       Local setup line content
+   * @param  {Number}           currentPort Current local port
+   * @return {Promise<Number>}              Local port to be used
+   */
+  function getAssignedPort(setup, currentPort) {
+    return new Promise((resolve, reject) => {
       if (setup === 'active') {
-        var randomBasePort = Math.ceil(Math.random() * (configuredHighestPort - configuredBasePort)) + configuredBasePort;
-        return resolve(portfinder.getPortPromise({
-          port: randomBasePort,
-          stopPort: configuredHighestPort
-        }));
+        if (currentPort && currentPort != MsrpSdk.Config.port && MsrpSdk.Config.reuseOutboundPortOnReInvites !== false) {
+          return resolve(currentPort);
+        } else {
+          const configuredBasePort = MsrpSdk.Config.outboundBasePort ?? 49152;
+          const configuredHighestPort = MsrpSdk.Config.outboundHighestPort ?? 65535;
+          const randomBasePort = Math.ceil(Math.random() * (configuredHighestPort - configuredBasePort)) + configuredBasePort;
+          return resolve(portfinder.getPortPromise({
+            port: randomBasePort,
+            stopPort: configuredHighestPort
+          }));
+        }
       } else {
         return resolve(MsrpSdk.Config.port);
       }

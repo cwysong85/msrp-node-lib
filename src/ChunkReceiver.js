@@ -73,10 +73,7 @@ module.exports = function(MsrpSdk) {
     } else {
       // Boo. Text frame: turn it back into UTF-8 and cross your fingers
       // that the resulting bytes are what they should be.
-      if(chunk.body === null) {
-        chunk.body = "";
-      }
-      chunkBody = new Buffer(chunk.body);
+      chunkBody = Buffer.from(chunk.body ?? '');
       chunkSize = chunkBody.length;
     }
 
@@ -147,7 +144,7 @@ module.exports = function(MsrpSdk) {
         array.push(this.buffer.slice(chunk.byteRange.start + chunkSize - 1));
       }
 
-      this.buffer = new Buffer(array);
+      this.buffer = Buffer.from(array);
       this.size = this.buffer.length;
     }
 
