@@ -31,8 +31,8 @@ module.exports = function(MsrpSdk) {
 
       socket.read_buffer += data;
 
-      var reg = /MSRP (\S+).*?\n-------\1[$#+]\r?\n/gs;
-      var lastIndex = 0;
+      const reg = /MSRP (\S+).*?\n-------\1[$#+]\r?\n/gs;
+      let lastIndex = 0;
       while (message = reg.exec(socket.read_buffer)?.[0]) {
         // Parse each message
         const parsedMessage = MsrpSdk.parseMessage(message);
@@ -130,25 +130,29 @@ module.exports = function(MsrpSdk) {
       return;
     }
 
-    // Set session socket if there is no current socket set
+    // If the session socket is not yet set
     if (!session.socket || session.socket.destroyed) {
-      // Do not connect socket if it is not coming from the expected address
-      // TODO: (LVM24) Test if this check is breaking conferences in some scenarios
-      const remoteEndpointUri = new MsrpSdk.URI(session.remoteEndpoints[0]);
-      if (socket.remoteAddress !== remoteEndpointUri.authority) {
-        MsrpSdk.Logger.warn('[MSRP SocketHandler] Error while handling incoming request: 400 BAD REQUEST');
-        sendResponse(request, socket, request.toPath[0], MsrpSdk.Status.BAD_REQUEST);
+      // Set the socket immediately (even if its remote address doesn't match the SDP data), and continue processing the message
+      if (MsrpSdk.Config.useInboundMessageForSocketSetup === true) {
+        try {
+          session.setSocket(socket, false);
+          // Remove the socket from the danglingSockets list if it was there
+          const socketIndex = MsrpSdk.Server.danglingSockets.indexOf(socket);
+          if (socketIndex !== -1) {
+            MsrpSdk.Server.danglingSockets.splice(socketIndex, 1);
+          }
+        } catch (error) {
+          MsrpSdk.Logger.error(`[MSRP SocketHandler] Error setting socket for session ${session.sid}: ${error}`);
+        }
+      } else {
+        // Wait for the session socket to be set after the SDP handshake before processing the message
+        MsrpSdk.Logger.debug(`[MSRP SocketHandler] Buffering incoming request with tid ${request.tid} for session ${toUri.sessionId} until session socket is set...`);
+        session.once('socketSet', function() {
+          MsrpSdk.Logger.debug(`[MSRP SocketHandler] Processing buffered incoming request with TID ${request.tid} for MSRP Session ID ${toUri.sessionId}...`);
+          handleIncomingRequest(encodedRequest, request, socket);
+        });
         return;
       }
-
-      session.setSocket(socket);
-    }
-
-    // If there is a socket in use, but a new socket is connected, add a listener so the new socket is used as soon as the current socket is closed
-    if (socket.remoteAddress !== session.socket.remoteAddress || socket.remotePort !== session.socket.remotePort) {
-      session.socket.on('close', function(hadError) {
-        session.setSocket(socket);
-      });
     }
 
     // Check if remote endpoint shouldn't be sending messages because of the recvonly attribute

@@ -19,11 +19,11 @@ module.exports = function(MsrpSdk) {
       throw new TypeError('Missing mandatory parameter');
     }
     if (!body) {
-      this.bodyBuffer = new Buffer();
+      this.bodyBuffer = Buffer.alloc(0);
       this.contentType = null;
       this.disposition = null;
     } else if (body instanceof String || typeof body === 'string') {
-      this.bodyBuffer = new Buffer(body);
+      this.bodyBuffer = Buffer.from(body);
       this.contentType = contentType || 'text/plain';
       this.disposition = disposition;
     } else if (Buffer.isBuffer(body)) {
