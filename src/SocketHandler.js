@@ -17,9 +17,9 @@ module.exports = function(MsrpSdk) {
     socket.read_buffer = '';
 
     // Set socket timeout as needed
-    if (MsrpSdk.Config.socketTimeout > 0) {
-      MsrpSdk.Logger.debug(`[MSRP SocketHandler] Setting socket timeout to ${MsrpSdk.Config.socketTimeout}`);
-      socket.setTimeout(MsrpSdk.Config.socketTimeout);
+    if (MsrpSdk.Config.idleSocketTimeout > 0) {
+      MsrpSdk.Logger.debug(`[MSRP SocketHandler] Setting idle socket timeout to ${MsrpSdk.Config.idleSocketTimeout}`);
+      socket.setTimeout(MsrpSdk.Config.idleSocketTimeout);
     }
 
     // Socket events:
