@@ -293,7 +293,7 @@ module.exports = function(MsrpSdk) {
       session.emit('socketError', session);
     });
     socket.on('timeout', function() {
-      session.emit('socketTimeout', session);
+      session.emit('idleSocketTimeout', session);
     });
 
     // Emit socketSet event
@@ -436,6 +436,17 @@ module.exports = function(MsrpSdk) {
       } else {
         // If there is no socket, wait for the remote party to connect
         MsrpSdk.Logger.debug(`[MSRP Session] No dangling socket found for session ${session.sid}. Waiting for remote party to connect...`);
+
+        // If the socket is not connected after a certain time, end the session
+        if (MsrpSdk.Config.socketConnectTimeout > 0) {
+          setTimeout(() => {
+            if (!session.socket) {
+              MsrpSdk.Logger.warning(`[MSRP Session] Socket connect timeout. No socket connected to session ${session.sid}. Ending session...`);
+              session.emit('socketConnectTimeout', session);
+              session.end();
+            }
+          }, MsrpSdk.Config.socketConnectTimeout);
+        }
       }
     }
 

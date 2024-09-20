@@ -116,8 +116,13 @@ module.exports = function(MsrpSdk) {
       sessionController.emit('socketSet', session);
     });
 
-    session.on('socketTimeout', function(session) {
-      sessionController.emit('socketTimeout', session);
+    session.on('socketConnectTimeout', function(session) {
+      sessionController.emit('socketConnectTimeout', session);
+      session.end();
+    });
+
+    session.on('idleSocketTimeout', function(session) {
+      sessionController.emit('idleSocketTimeout', session);
       session.end();
     });
 
