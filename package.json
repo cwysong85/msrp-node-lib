@@ -2,7 +2,7 @@
   "name": "msrp-node-lib",
   "title": "msrp-node-lib",
   "description": "A simple, intuitive MSRP JavaScript library",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "license": "MIT",
   "author": {
     "email": "cwysong85@gmail.com",
