@@ -19,6 +19,8 @@ module.exports = function(MsrpSdk) {
    * @property {Object} heartbeatsTransIds Dictionary of heartbeats transaction IDs
    * @property {Function} heartbeatPingFunc Ping function for heartbeats
    * @property {Function} heartbeatTimeoutFunc Timeout function for heartbeats
+   * @property {Function} socketConnectTimeoutFunc Timeout function for socket connection
+   * @property {String} sdpState SDP negotiation state (offered, answered)
    */
   const Session = function() {
     this.sid = MsrpSdk.Util.newSID();
@@ -32,6 +34,7 @@ module.exports = function(MsrpSdk) {
     this.heartbeatsTransIds = {};
     this.heartbeatPingFunc = null;
     this.heartbeatTimeoutFunc = null;
+    this.socketConnectTimeoutFunc = null;
     this.sdpState = null;
   };
 
@@ -231,6 +234,7 @@ module.exports = function(MsrpSdk) {
 
   /**
    * Ends a session
+   * NOTE: Most of the time this function should not be called directly. Use SessionController.removeSession instead.
    */
   Session.prototype.end = function() {
     const session = this;
@@ -273,6 +277,9 @@ module.exports = function(MsrpSdk) {
         throw new Error(`Socket does not belong to the expected remote endpoint. Got ${remoteSocketAddress}, expected ${expectedSocketAddress}.`);
       }
     }
+
+    // Clear socket connect timeout function
+    clearTimeout(session.socketConnectTimeoutFunc);
 
     // Set socket
     session.socket = socket;
@@ -439,11 +446,13 @@ module.exports = function(MsrpSdk) {
 
         // If the socket is not connected after a certain time, end the session
         if (MsrpSdk.Config.socketConnectTimeout > 0) {
-          setTimeout(() => {
-            if (!session.socket) {
+          // Clear any existing socket connect timeout function (e.g. re-invites)
+          clearTimeout(session.socketConnectTimeoutFunc);
+          // Set socket connect timeout function
+          session.socketConnectTimeoutFunc = setTimeout(() => {
+            if (!session.socket && !session.ended && !session.remoteSdp.attributes.inactive && !session.localSdp.attributes.inactive) {
               MsrpSdk.Logger.warning(`[MSRP Session] Socket connect timeout. No socket connected to session ${session.sid}. Ending session...`);
               session.emit('socketConnectTimeout', session);
-              session.end();
             }
           }, MsrpSdk.Config.socketConnectTimeout);
         }

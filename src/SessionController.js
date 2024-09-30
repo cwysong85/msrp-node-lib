@@ -69,7 +69,6 @@ module.exports = function(MsrpSdk) {
   function forwardSessionEvents(session, sessionController) {
     // Session events
     session.on('end', function(session) {
-      sessionController.removeSession(session);
       sessionController.emit('end', session);
     });
 
@@ -89,7 +88,6 @@ module.exports = function(MsrpSdk) {
       sessionController.emit('responseSent', response, session, encodedResponse);
     });
 
-
     session.on('report', function(report, session, encodedReport) {
       sessionController.emit('report', report, session, encodedReport);
     });
@@ -101,7 +99,6 @@ module.exports = function(MsrpSdk) {
     session.on('update', function(session) {
       sessionController.emit('update', session);
     });
-
 
     // Socket events
     session.on('socketClose', function(hadError, session) {
@@ -118,19 +115,15 @@ module.exports = function(MsrpSdk) {
 
     session.on('socketConnectTimeout', function(session) {
       sessionController.emit('socketConnectTimeout', session);
-      session.end();
     });
 
     session.on('idleSocketTimeout', function(session) {
       sessionController.emit('idleSocketTimeout', session);
-      session.end();
     });
 
     session.on('socketReconnectTimeout', function(session) {
       sessionController.emit('socketReconnectTimeout', session);
-      session.end();
     });
-
 
     // Heartbeats events
     session.on('heartbeatFailure', function(session) {

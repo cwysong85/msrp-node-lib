@@ -262,7 +262,7 @@ module.exports = function(MsrpSdk) {
       return;
     }
     // Check if it is a heartbeat response and handle it as needed and return
-    const isHeartbeatResponse = response.tid && session && session.heartbeatsTransIds[response.tid];
+    const isHeartbeatResponse = response.tid && session?.heartbeatsTransIds[response.tid];
     if (isHeartbeatResponse) {
       if (response.status === 200) {
         // If the response is 200OK, clear all the stored heartbeats
