@@ -3,6 +3,7 @@
 ### Initialization
 
 Create the MSRP library with minimal settings:
+
 ```
 var msrp = require('msrp-node-lib')({
     host: '127.0.0.1',
@@ -15,6 +16,7 @@ var msrp = require('msrp-node-lib')({
 ```
 
 You can also pass a custom `logger` to the MSRP library, otherwise the `console` logging methods are used. Here is an example of passing the custom logger to the MSRP library:
+
 ```
 var winston = require('winston');
 
@@ -36,8 +38,8 @@ var msrp = require('msrp-node-lib')(
 }));
 ```
 
-
 Start MSRP server:
+
 ```
 // create msrp server
 var msrpServer = new msrp.Server();
@@ -49,6 +51,7 @@ msrpServer.start();
 ### Events
 
 Socket connected event and MSRP session events:
+
 ```
 msrpServer.on('socketConnect', function(session) {
     console.log('MSRP socket connected!');
@@ -69,8 +72,8 @@ msrpServer.on('socketConnect', function(session) {
 });
 ```
 
-
 Other useful socket events:
+
 ```
 msrpServer.on('socketTimeout', function() {
 	console.log('MSRP socket timed out');
@@ -83,4 +86,10 @@ msrpServer.on('socketError', function() {
 msrpServer.on('socketClose', function() {
 	console.log('MSRP socket closed');
 });
- ```
+```
+
+Stopping the MSRP server:
+
+```
+msrpServer.stop(() => { console.log('MSRP Server stopped')});
+```
