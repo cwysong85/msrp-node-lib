@@ -14,7 +14,7 @@
   },
   "main": "src/MsrpSdk.js",
   "engines": {
-    "node": ">=18 <19"
+    "node": ">=18"
   },
   "dependencies": {
     "portfinder": "1.0.32"
