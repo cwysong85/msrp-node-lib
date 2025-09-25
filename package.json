@@ -65,6 +65,7 @@
       "**/tests/*.test.js"
     ],
     "testPathIgnorePatterns": [
+      "/node_modules/",
       "/tests/functional/"
     ],
     "collectCoverageFrom": [
