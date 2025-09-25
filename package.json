@@ -47,7 +47,7 @@
     "test:ci": "npm run test:coverage && npm run test:functional",
     "lint": "echo 'Linting not configured yet'",
     "lint:fix": "echo 'Lint fix not configured yet'",
-    "preversion": "npm run test:all",
+    "preversion": "npm run test",
     "postversion": "git push && git push --tags",
     "prepublishOnly": "npm run test:all",
     "clean": "rm -rf coverage/ node_modules/.cache/",
