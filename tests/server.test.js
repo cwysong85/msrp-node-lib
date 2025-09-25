@@ -161,13 +161,21 @@ describe("Server", () => {
     it("should handle server error and call callback with error", (done) => {
       const testError = new Error("Server start failed");
 
+      // Mock the listen method to not call the callback immediately - use mockImplementationOnce
+      mockNetServer.listen.mockImplementationOnce((port, host, callback) => {
+        // Don't call callback immediately, let the error event trigger it
+        return mockNetServer;
+      });
+
       server.start((error) => {
         expect(error).toBe(testError);
         done();
       });
 
-      // Simulate server error
-      mockNetServer.emit("error", testError);
+      // Simulate server error after a small delay to ensure start() has been called
+      setImmediate(() => {
+        mockNetServer.emit("error", testError);
+      });
     });
 
     it("should log server error", () => {

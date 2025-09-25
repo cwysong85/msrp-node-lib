@@ -13,12 +13,8 @@ A complete MSRP (Message Session Relay Protocol) library for Node.js application
 ## 🚀 Features
 
 - ✅ **Complete RFC 4975 Implementation** - Full MSRP protocol support
-- ✅ **SDP Integration** - Seamless session description handling
+- ✅ **SDP Integration** - Session description handling
 - ✅ **Multi-Process Testing** - Advanced test infrastructure with real network communication
-- ✅ **Cross-Platform** - Works on Windows, macOS, and Linux
-- ✅ **Production Ready** - Comprehensive error handling and resource management
-- ✅ **TypeScript Ready** - Full type definitions included
-- ✅ **High Test Coverage** - Extensive unit and functional tests
 
 ## Installation
 

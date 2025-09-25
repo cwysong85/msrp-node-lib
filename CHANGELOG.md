@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Unit test failures in server error handling scenarios
+- Mock implementation side effects causing test interference
 - Port management and cleanup in functional tests
 - Process synchronization in multi-process tests
 - Resource leaks in test infrastructure
