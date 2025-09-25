@@ -1,4 +1,4 @@
-module.exports = function(MsrpSdk) {
+module.exports = function (MsrpSdk) {
   // Private variables
   const chunkReceivers = {};
   let receiverCheckInterval = null;
@@ -9,23 +9,25 @@ module.exports = function(MsrpSdk) {
    * Socket handler
    * @param  {Object} socket Socket
    */
-  const SocketHandler = function(socket) {
+  const SocketHandler = function (socket) {
     // Set socket encoding so we get Strings in the 'data' event
-    socket.setEncoding('utf8');
+    socket.setEncoding("utf8");
 
     // set a read buffer so we can cache data if we read incomplete packets
-    socket.read_buffer = '';
+    socket.read_buffer = "";
 
     // Set socket timeout as needed
     if (MsrpSdk.Config.idleSocketTimeout > 0) {
-      MsrpSdk.Logger.debug(`[MSRP SocketHandler] Setting idle socket timeout to ${MsrpSdk.Config.idleSocketTimeout}`);
+      MsrpSdk.Logger.debug(
+        `[MSRP SocketHandler] Setting idle socket timeout to ${MsrpSdk.Config.idleSocketTimeout}`
+      );
       socket.setTimeout(MsrpSdk.Config.idleSocketTimeout);
     }
 
     // Socket events:
 
     // On data:
-    socket.on('data', function(data) {
+    socket.on("data", function (data) {
       // Send data to tracing function
       traceMsrp(data);
 
@@ -33,11 +35,13 @@ module.exports = function(MsrpSdk) {
 
       const reg = /MSRP (\S+).*?\n-------\1[$#+]\r?\n/gs;
       let lastIndex = 0;
-      while (message = reg.exec(socket.read_buffer)?.[0]) {
+      while ((message = reg.exec(socket.read_buffer)?.[0])) {
         // Parse each message
         const parsedMessage = MsrpSdk.parseMessage(message);
         if (!parsedMessage) {
-          MsrpSdk.Logger.warn(`[MSRP SocketHandler] Unable to parse incoming message. Message was discarded. Message: ${message}`);
+          MsrpSdk.Logger.warn(
+            `[MSRP SocketHandler] Unable to parse incoming message. Message was discarded. Message: ${message}`
+          );
           continue;
         }
         // Handle each message
@@ -52,23 +56,25 @@ module.exports = function(MsrpSdk) {
     });
 
     // On connect:
-    socket.on('connect', function() {
-      MsrpSdk.Logger.debug('[MSRP SocketHandler] Socket connect');
+    socket.on("connect", function () {
+      MsrpSdk.Logger.debug("[MSRP SocketHandler] Socket connect");
     });
 
     // On timeout:
-    socket.on('timeout', function() {
-      MsrpSdk.Logger.warn('[MSRP SocketHandler] Socket timeout');
+    socket.on("timeout", function () {
+      MsrpSdk.Logger.warn("[MSRP SocketHandler] Socket timeout");
     });
 
     // On error:
-    socket.on('error', function(error) {
-      MsrpSdk.Logger.error(`[MSRP SocketHandler] Socket error: ${error.toString()}`);
+    socket.on("error", function (error) {
+      MsrpSdk.Logger.error(
+        `[MSRP SocketHandler] Socket error: ${error.toString()}`
+      );
     });
 
     // On close:
-    socket.on('close', function(hadError) {
-      MsrpSdk.Logger.debug('[MSRP SocketHandler] Socket close');
+    socket.on("close", function (hadError) {
+      MsrpSdk.Logger.debug("[MSRP SocketHandler] Socket close");
     });
 
     /**
@@ -78,25 +84,42 @@ module.exports = function(MsrpSdk) {
      * @param  {Object}   routePaths Route paths
      * @param  {Function} cb         Callback function
      */
-    socket.sendMessage = function(session, message, routePaths, cb, requestReports) {
+    socket.sendMessage = function (
+      session,
+      message,
+      routePaths,
+      cb,
+      requestReports
+    ) {
       // Sanity checks
       if (!session || !message || !routePaths) {
-        MsrpSdk.Logger.error('[MSRP SocketHandler] Unable to send message. Missing arguments.');
+        MsrpSdk.Logger.error(
+          "[MSRP SocketHandler] Unable to send message. Missing arguments."
+        );
         return;
       }
 
-      const sender = new MsrpSdk.ChunkSender(routePaths, message.body, message.contentType, null, null, requestReports);
+      const sender = new MsrpSdk.ChunkSender(
+        routePaths,
+        message.body,
+        message.contentType,
+        null,
+        null,
+        requestReports
+      );
 
       // Logic for keeping track of sent heartbeats
-      if (session && message.contentType === 'text/x-msrp-heartbeat') {
+      if (session && message.contentType === "text/x-msrp-heartbeat") {
         session.heartbeatsTransIds[sender.nextTid] = Date.now();
-        MsrpSdk.Logger.debug(`[MSRP SocketHandler] MSRP heartbeat sent to ${sender.session.toPath} (tid: ${sender.nextTid})`);
+        MsrpSdk.Logger.debug(
+          `[MSRP SocketHandler] MSRP heartbeat sent to ${sender.session.toPath} (tid: ${sender.nextTid})`
+        );
       }
 
       activeSenders.push({
         sender: sender,
         socket: socket,
-        cb: cb
+        cb: cb,
       });
       chunkSenders[sender.messageId] = sender;
       sendRequests();
@@ -112,12 +135,34 @@ module.exports = function(MsrpSdk) {
    */
   function handleIncomingRequest(encodedRequest, request, socket) {
     // Retrieve Session and other needed parameters
-    const toUri = new MsrpSdk.URI(request.toPath[0]);
-    const fromUri = new MsrpSdk.URI(request.fromPath[0]);
+    let toUri, fromUri;
+    try {
+      toUri = new MsrpSdk.URI(request.toPath[0]);
+      fromUri = new MsrpSdk.URI(request.fromPath[0]);
+    } catch (error) {
+      // If To-Path or From-Path is malformed return 400 BAD REQUEST
+      MsrpSdk.Logger.warn(
+        "[MSRP SocketHandler] Error while handling incoming request: 400 BAD REQUEST"
+      );
+      sendResponse(
+        request,
+        socket,
+        request.toPath[0],
+        MsrpSdk.Status.BAD_REQUEST
+      );
+      return;
+    }
     if (!toUri || !fromUri) {
       // If To-Path or From-Path is malformed return 400 BAD REQUEST
-      MsrpSdk.Logger.warn('[MSRP SocketHandler] Error while handling incoming request: 400 BAD REQUEST');
-      sendResponse(request, socket, request.toPath[0], MsrpSdk.Status.BAD_REQUEST);
+      MsrpSdk.Logger.warn(
+        "[MSRP SocketHandler] Error while handling incoming request: 400 BAD REQUEST"
+      );
+      sendResponse(
+        request,
+        socket,
+        request.toPath[0],
+        MsrpSdk.Status.BAD_REQUEST
+      );
       return;
     }
     const session = MsrpSdk.SessionController.getSession(toUri.sessionId);
@@ -125,8 +170,15 @@ module.exports = function(MsrpSdk) {
     // Check if the session exists
     if (!session) {
       // If session doesn't exists, return 481 SESSION DOES NOT EXIST
-      MsrpSdk.Logger.warn('[MSRP SocketHandler] Error while handling incoming request: 481 SESSION DOES NOT EXISTS');
-      sendResponse(request, socket, toUri.uri, MsrpSdk.Status.SESSION_DOES_NOT_EXIST);
+      MsrpSdk.Logger.warn(
+        "[MSRP SocketHandler] Error while handling incoming request: 481 SESSION DOES NOT EXISTS"
+      );
+      sendResponse(
+        request,
+        socket,
+        toUri.uri,
+        MsrpSdk.Status.SESSION_DOES_NOT_EXIST
+      );
       return;
     }
 
@@ -142,13 +194,19 @@ module.exports = function(MsrpSdk) {
             MsrpSdk.Server.danglingSockets.splice(socketIndex, 1);
           }
         } catch (error) {
-          MsrpSdk.Logger.error(`[MSRP SocketHandler] Error setting socket for session ${session.sid}: ${error}`);
+          MsrpSdk.Logger.error(
+            `[MSRP SocketHandler] Error setting socket for session ${session.sid}: ${error}`
+          );
         }
       } else {
         // Wait for the session socket to be set after the SDP handshake before processing the message
-        MsrpSdk.Logger.debug(`[MSRP SocketHandler] Buffering incoming request with tid ${request.tid} for session ${toUri.sessionId} until session socket is set...`);
-        session.once('socketSet', function() {
-          MsrpSdk.Logger.debug(`[MSRP SocketHandler] Processing buffered incoming request with TID ${request.tid} for MSRP Session ID ${toUri.sessionId}...`);
+        MsrpSdk.Logger.debug(
+          `[MSRP SocketHandler] Buffering incoming request with tid ${request.tid} for session ${toUri.sessionId} until session socket is set...`
+        );
+        session.once("socketSet", function () {
+          MsrpSdk.Logger.debug(
+            `[MSRP SocketHandler] Processing buffered incoming request with TID ${request.tid} for MSRP Session ID ${toUri.sessionId}...`
+          );
           handleIncomingRequest(encodedRequest, request, socket);
         });
         return;
@@ -157,25 +215,29 @@ module.exports = function(MsrpSdk) {
 
     // Check if remote endpoint shouldn't be sending messages because of the recvonly attribute
     if (session.remoteSdp.attributes.recvonly) {
-      MsrpSdk.Logger.warn('[MSRP SocketHandler] MSRP data is not allowed when session requested "a=recvonly" in SDP. Not forwarding this message to the endpoint until "a=sendonly" or "a=sendrecv" is requested.');
+      MsrpSdk.Logger.warn(
+        '[MSRP SocketHandler] MSRP data is not allowed when session requested "a=recvonly" in SDP. Not forwarding this message to the endpoint until "a=sendonly" or "a=sendrecv" is requested.'
+      );
       // If remote endpoint is "recvonly", return 403 FORBIDDEN
       sendResponse(request, socket, toUri.uri, MsrpSdk.Status.FORBIDDEN);
       return;
     }
 
     // Handle MSRP REPORT requests
-    if (request.method === 'REPORT') {
+    if (request.method === "REPORT") {
       incomingReport(encodedRequest, request);
       return;
     }
 
     // Handle MSRP SEND requests
-    if (request.method === 'SEND') {
-
+    if (request.method === "SEND") {
       // Non-chunked messages
-      if (request.byteRange.start === 1 && request.continuationFlag === MsrpSdk.Message.Flag.end) {
+      if (
+        request.byteRange.start === 1 &&
+        request.continuationFlag === MsrpSdk.Message.Flag.end
+      ) {
         // Emit 'message' event.
-        session.emit('message', request, session, encodedRequest);
+        session.emit("message", request, session, encodedRequest);
         // Return successful response: 200 OK
         sendResponse(request, socket, toUri.uri, MsrpSdk.Status.OK);
         return;
@@ -192,7 +254,10 @@ module.exports = function(MsrpSdk) {
       // First chunk
       if (request.byteRange.start === 1) {
         // Instanciate Chunk Receiver and start Chunk Receiver poll if needed
-        chunkReceivers[messageId] = new MsrpSdk.ChunkReceiver(request, 1024 * 1024);
+        chunkReceivers[messageId] = new MsrpSdk.ChunkReceiver(
+          request,
+          1024 * 1024
+        );
         startChunkReceiverPoll();
         // Return successful response: 200 OK
         sendResponse(request, socket, toUri.uri, MsrpSdk.Status.OK);
@@ -210,9 +275,13 @@ module.exports = function(MsrpSdk) {
       // Process received chunk and check if any error ocurrs
       if (!chunkReceivers[messageId].processChunk(request)) {
         if (chunkReceivers[messageId].remoteAbort) {
-          MsrpSdk.Logger.warn('[MSRP SocketHandler] Message transmission aborted by remote endpoint');
+          MsrpSdk.Logger.warn(
+            "[MSRP SocketHandler] Message transmission aborted by remote endpoint"
+          );
         } else {
-          MsrpSdk.Logger.error('[MSRP SocketHandler] An error occurred while processing message chunk. Message transmission aborted.');
+          MsrpSdk.Logger.error(
+            "[MSRP SocketHandler] An error occurred while processing message chunk. Message transmission aborted."
+          );
         }
         // Clean up
         delete chunkReceivers[messageId];
@@ -223,7 +292,9 @@ module.exports = function(MsrpSdk) {
 
       // If this is not the last chunk, wait for additional chunks
       if (!chunkReceivers[messageId].isComplete()) {
-        MsrpSdk.Logger.debug(`[MSRP SocketHandler] Receiving additional chunks for messageId: ${messageId}. Received bytes: ${chunkReceivers[messageId].receivedBytes}`);
+        MsrpSdk.Logger.debug(
+          `[MSRP SocketHandler] Receiving additional chunks for messageId: ${messageId}. Received bytes: ${chunkReceivers[messageId].receivedBytes}`
+        );
         // Return successful response: 200 OK
         sendResponse(request, socket, toUri.uri, MsrpSdk.Status.OK);
         return;
@@ -232,9 +303,9 @@ module.exports = function(MsrpSdk) {
       // If it is the last chunk, parse the message body and clean up the receiver
       const buffer = chunkReceivers[messageId].buffer;
       delete chunkReceivers[messageId];
-      request.body = buffer.toString('utf-8');
+      request.body = buffer.toString("utf-8");
       // Emit 'message' event including the complete message
-      session.emit('message', request, session, encodedRequest);
+      session.emit("message", request, session, encodedRequest);
       // Return successful response: 200 OK
       sendResponse(request, socket, toUri.uri, MsrpSdk.Status.OK);
       return;
@@ -252,26 +323,41 @@ module.exports = function(MsrpSdk) {
    */
   function handleIncomingResponse(encodedResponse, response) {
     // Retrieve Session
-    const toUri = new MsrpSdk.URI(response.toPath[0]);
+    let toUri;
+    try {
+      toUri = new MsrpSdk.URI(response.toPath[0]);
+    } catch (error) {
+      MsrpSdk.Logger.warn(
+        "[MSRP SocketHandler] Error while handling response: malformed To-Path"
+      );
+      return;
+    }
     const session = MsrpSdk.SessionController.getSession(toUri.sessionId);
 
     // Check if the session exists
     if (!session) {
       // If session doesn't exists, log and return
-      MsrpSdk.Logger.warn('[MSRP SocketHandler] Error while handling response: session does not exist');
+      MsrpSdk.Logger.warn(
+        "[MSRP SocketHandler] Error while handling response: session does not exist"
+      );
       return;
     }
     // Check if it is a heartbeat response and handle it as needed and return
-    const isHeartbeatResponse = response.tid && session?.heartbeatsTransIds[response.tid];
+    const isHeartbeatResponse =
+      response.tid && session?.heartbeatsTransIds[response.tid];
     if (isHeartbeatResponse) {
       if (response.status === 200) {
         // If the response is 200OK, clear all the stored heartbeats
-        MsrpSdk.Logger.debug(`[MSRP SocketHandler] MSRP heartbeat response received from ${response.fromPath} (tid: ${response.tid})`);
+        MsrpSdk.Logger.debug(
+          `[MSRP SocketHandler] MSRP heartbeat response received from ${response.fromPath} (tid: ${response.tid})`
+        );
         session.heartbeatsTransIds = {};
       } else if (response.status >= 400) {
         // If not okay, emit 'heartbeatFailure'
-        MsrpSdk.Logger.debug(`[MSRP SocketHandler] MSRP heartbeat error received from ${response.fromPath} (tid: ${response.tid})`);
-        session.emit('heartbeatFailure', session);
+        MsrpSdk.Logger.debug(
+          `[MSRP SocketHandler] MSRP heartbeat error received from ${response.fromPath} (tid: ${response.tid})`
+        );
+        session.emit("heartbeatFailure", session);
       }
     }
 
@@ -279,7 +365,7 @@ module.exports = function(MsrpSdk) {
     // Emit event used for tracking the response of an specific request with a given TID
     session.emit(`${response.tid}Response`, response);
     // Emit general response event
-    session.emit('response', response, session, encodedResponse);
+    session.emit("response", response, session, encodedResponse);
   }
 
   /**
@@ -290,14 +376,18 @@ module.exports = function(MsrpSdk) {
     // Retrieve message ID
     const messageId = report.messageId;
     if (!messageId) {
-      MsrpSdk.Logger.error('[MSRP SocketHandler] Invalid REPORT: No message ID');
+      MsrpSdk.Logger.error(
+        "[MSRP SocketHandler] Invalid REPORT: No message ID"
+      );
       return;
     }
 
     // Check whether this is for a chunk sender first
     const sender = chunkSenders[messageId];
     if (!sender) {
-      MsrpSdk.Logger.error('[MSRP SocketHandler] Invalid REPORT: Unknown message ID');
+      MsrpSdk.Logger.error(
+        "[MSRP SocketHandler] Invalid REPORT: Unknown message ID"
+      );
       // Silently ignore, as suggested in 4975 section 7.1.2
       return;
     }
@@ -318,10 +408,18 @@ module.exports = function(MsrpSdk) {
     }
 
     // Emit report event to the session if it exists
-    const parsedToUri = new MsrpSdk.URI(report.toPath[0]);
+    let parsedToUri;
+    try {
+      parsedToUri = new MsrpSdk.URI(report.toPath[0]);
+    } catch (error) {
+      MsrpSdk.Logger.warn(
+        "[MSRP SocketHandler] Error while handling report: malformed To-Path"
+      );
+      return;
+    }
     const session = MsrpSdk.SessionController.getSession(parsedToUri.sessionId);
     if (session) {
-      session.emit('report', report, session, encodedReport);
+      session.emit("report", report, session, encodedReport);
     }
   }
 
@@ -333,15 +431,23 @@ module.exports = function(MsrpSdk) {
    * @param  {Number} status  Status to be included in the report
    */
   function sendReport(socket, session, req, status) {
-    const statusHeader = ['000', status, MsrpSdk.StatusComment[status]].join(' ');
-    const report = new MsrpSdk.Message.OutgoingRequest({
-      toPath: session.remoteEndpoints,
-      localUri: session.localEndpoint.uri
-    }, 'REPORT');
-    report.addHeader('message-id', req.messageId);
-    report.addHeader('status', statusHeader);
+    const statusHeader = ["000", status, MsrpSdk.StatusComment[status]].join(
+      " "
+    );
+    const report = new MsrpSdk.Message.OutgoingRequest(
+      {
+        toPath: session.remoteEndpoints,
+        localUri: session.localEndpoint.uri,
+      },
+      "REPORT"
+    );
+    report.addHeader("message-id", req.messageId);
+    report.addHeader("status", statusHeader);
 
-    if (req.byteRange || req.continuationFlag === MsrpSdk.Message.Flag.continued) {
+    if (
+      req.byteRange ||
+      req.continuationFlag === MsrpSdk.Message.Flag.continued
+    ) {
       // A REPORT Byte-Range will be required
       let start = 1;
       let end = -1;
@@ -364,13 +470,15 @@ module.exports = function(MsrpSdk) {
       }
 
       if (end !== req.byteRange.end) {
-        MsrpSdk.Logger.error('[MSRP SocketHandler] Report Byte-Range end does not match request');
+        MsrpSdk.Logger.error(
+          "[MSRP SocketHandler] Report Byte-Range end does not match request"
+        );
       }
 
       report.byteRange = {
-        'start': start,
-        'end': end,
-        'total': total
+        start: start,
+        end: end,
+        total: total,
       };
     }
 
@@ -378,7 +486,7 @@ module.exports = function(MsrpSdk) {
     socket.write(encodedReport);
 
     // Emit reportSent event
-    session.emit('reportSent', report, session, encodedReport);
+    session.emit("reportSent", report, session, encodedReport);
 
     traceMsrp(encodedReport);
   }
@@ -404,9 +512,11 @@ module.exports = function(MsrpSdk) {
 
       // Check socket availability before writing
       if (!socket || socket.destroyed) {
-        MsrpSdk.Logger.error('[MSRP SocketHandler] Cannot send message. Socket unavailable.');
+        MsrpSdk.Logger.error(
+          "[MSRP SocketHandler] Cannot send message. Socket unavailable."
+        );
         if (cb) {
-          cb(null, new Error('Socket unavailable'));
+          cb(null, new Error("Socket unavailable"));
         }
         activeSenders.shift();
         continue;
@@ -419,9 +529,11 @@ module.exports = function(MsrpSdk) {
 
       // Emit messageSent event to the session if it exists
       const parsedFromUri = new MsrpSdk.URI(msg.fromPath[0]);
-      const session = MsrpSdk.SessionController.getSession(parsedFromUri.sessionId);
+      const session = MsrpSdk.SessionController.getSession(
+        parsedFromUri.sessionId
+      );
       if (session) {
-        session.emit('messageSent', msg, session, encodeMsg);
+        session.emit("messageSent", msg, session, encodeMsg);
       }
 
       // Check whether this sender has now completed
@@ -448,23 +560,27 @@ module.exports = function(MsrpSdk) {
   function sendResponse(req, socket, toUri, status) {
     // Check socket availability
     if (socket.destroyed) {
-      MsrpSdk.Logger.error('[MSRP SocketHandler] Unable to send message. Socket is destroyed.');
+      MsrpSdk.Logger.error(
+        "[MSRP SocketHandler] Unable to send message. Socket is destroyed."
+      );
       return;
     }
 
     // Write message to socket
     const msg = new MsrpSdk.Message.OutgoingResponse(req, toUri, status);
     const encodeMsg = msg.encode();
-    socket.write(encodeMsg, function() {
+    socket.write(encodeMsg, function () {
       // Emit response event to the session if it exists
       const parsedToUri = new MsrpSdk.URI(toUri);
-      const session = MsrpSdk.SessionController.getSession(parsedToUri.sessionId);
+      const session = MsrpSdk.SessionController.getSession(
+        parsedToUri.sessionId
+      );
       if (session) {
-        session.emit('responseSent', msg, session, encodeMsg);
+        session.emit("responseSent", msg, session, encodeMsg);
       }
 
       // After sending the message, if request has header 'success-report', send back a report
-      if (req.getHeader('failure-report') === 'yes') {
+      if (req.getHeader("failure-report") === "yes") {
         sendReport(socket, session, req, status);
       }
     });
@@ -479,7 +595,7 @@ module.exports = function(MsrpSdk) {
    */
   function startChunkReceiverPoll() {
     if (!receiverCheckInterval) {
-      receiverCheckInterval = setInterval(function() {
+      receiverCheckInterval = setInterval(function () {
         const now = new Date().getTime();
         const timeout = 30 * 1000; // 30 seconds
         for (const messageId in chunkReceivers) {
@@ -512,7 +628,6 @@ module.exports = function(MsrpSdk) {
     }
     MsrpSdk.Logger.debug(`[MSRP SocketHandler] MSRP trace:\n${message}`);
   }
-
 
   MsrpSdk.SocketHandler = SocketHandler;
 };
