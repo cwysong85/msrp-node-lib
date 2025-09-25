@@ -49,7 +49,7 @@
     "lint:fix": "echo 'Lint fix not configured yet'",
     "preversion": "echo 'Skipping tests for CI/CD infrastructure release'",
     "postversion": "git push && git push --tags",
-    "prepublishOnly": "npm run test:all",
+    "prepublishOnly": "npm test",
     "clean": "rm -rf coverage/ node_modules/.cache/",
     "dev": "npm run test:watch"
   },

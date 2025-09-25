@@ -23,8 +23,8 @@ jobs:
   manual-publish:
     name: Manual NPM Publish
     runs-on: ubuntu-latest
-    # Only allow manual publish from master branch
-    if: github.ref == 'refs/heads/master'
+    # Allow manual publish from master or dev branch
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev'
     
     steps:
     - name: Checkout repository
