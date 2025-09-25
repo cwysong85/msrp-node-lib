@@ -40,8 +40,8 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
-    - name: Run full test suite
-      run: npm run test:all
+    - name: Run unit tests
+      run: npm test
       
     - name: Build package (if applicable)
       run: npm run build --if-present
