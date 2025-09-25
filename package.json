@@ -2,7 +2,7 @@
   "name": "msrp-node-lib",
   "title": "msrp-node-lib",
   "description": "A complete MSRP (Message Session Relay Protocol) library for Node.js applications, supporting RFC 4975 message relay protocol with SDP integration",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "license": "MIT",
   "author": {
     "email": "cwysong85@gmail.com",
