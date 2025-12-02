@@ -219,9 +219,7 @@ module.exports = function (MsrpSdk) {
         session.setupConnection();
       }
     } catch (error) {
-      MsrpSdk.Logger.error(
-        `[MSRP Session] An error ocurred while creating the local SDP: ${error.toString()}`
-      );
+      MsrpSdk.Logger.error(`[MSRP Session] An error occurred while creating the local SDP: ${error.toString()}`);
       return;
     }
   };
@@ -289,9 +287,7 @@ module.exports = function (MsrpSdk) {
         session.setupConnection();
       }
     } catch (error) {
-      MsrpSdk.Logger.error(
-        `[MSRP Session] An error ocurred while processing the remote SDP: ${error.toString()}`
-      );
+      MsrpSdk.Logger.error(`[MSRP Session] An error occurred while processing the remote SDP: ${error.toString()}`);
       return;
     }
   };
